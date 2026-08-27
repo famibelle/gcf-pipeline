@@ -1,0 +1,21 @@
+name: tests
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      # Les tests ne couvrent que la logique pure (alignement, règles, métriques,
+      # LM de repli). Ils n'installent ni torch ni transformers : la CI resterait
+      # bloquée plusieurs minutes pour tester du code qui exige un GPU de toute façon.
+      - run: pip install pytest ruff
+      - run: ruff check src tests
+      - run: pytest -q

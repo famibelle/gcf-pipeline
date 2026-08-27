@@ -1,0 +1,46 @@
+# --- Secrets ---------------------------------------------------------------
+.env
+*.token
+hf_token*
+
+# --- Données et modèles (ne JAMAIS committer) ------------------------------
+# Le corpus source et les modèles entraînés se régénèrent ; ils n'ont rien à
+# faire dans git, et leur licence n'est pas forcément celle de ce dépôt.
+artifacts/*
+!artifacts/.gitkeep
+data/*
+!data/.gitkeep
+!data/seed_rules_ht2gcf.json
+*.pt
+*.bin
+*.arpa
+*.pkl
+*.jsonl
+*.csv
+!tests/fixtures/*.csv
+
+# --- Python ----------------------------------------------------------------
+__pycache__/
+*.py[cod]
+*.egg-info/
+build/
+dist/
+.venv/
+venv/
+env/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+
+# --- Notebooks -------------------------------------------------------------
+.ipynb_checkpoints/
+
+# --- Divers ----------------------------------------------------------------
+.DS_Store
+*.swp
+.idea/
+.vscode/
+wandb/
+runs/

@@ -1,0 +1,22 @@
+# --- Noyau ------------------------------------------------------------------
+datasets>=2.18.0
+huggingface_hub>=0.23.0
+transformers>=4.40.0
+torch>=2.1.0
+accelerate>=0.29.0
+sentencepiece>=0.2.0
+numpy>=1.24.0
+pandas>=2.0.0
+
+# --- Optionnel : alignement par embeddings (Phase 1, method=simalign) -------
+# simalign>=0.4
+# networkx>=3.0
+
+# --- Optionnel : modèle de langue KenLM (Phase 4) --------------------------
+# https://github.com/kpu/kenlm  -> fournit lmplz et build_binary
+# kenlm>=0.2.0
+# Sans ces paquets, src/lm.py bascule automatiquement sur le repli caractère.
+
+# --- Optionnel : re-transcription (Phase 5) --------------------------------
+# faster-whisper>=1.0.0
+# openai-whisper>=20231117
