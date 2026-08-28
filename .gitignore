@@ -18,6 +18,12 @@ data/*
 *.jsonl
 *.csv
 !tests/fixtures/*.csv
+# Exception assumée : la feuille de correction de la Phase 1 est un document
+# de travail collaboratif, pas un corpus régénérable — le tirage dépend d'une
+# graine et l'annotation est manuelle. Contenu : 80 transcriptions issues de
+# POTOMITAN/potomitan-gcf-transcription (CC-BY-4.0). L'audio reste exclu.
+!data/diagnostic_to_correct.csv
+!data/diagnostic_corrected.csv
 
 # --- Python ----------------------------------------------------------------
 __pycache__/
