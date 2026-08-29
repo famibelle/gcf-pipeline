@@ -146,6 +146,20 @@ input[type=text].notes{
   width:100%;padding:9px 12px;border:1px solid var(--line-2);border-radius:8px;
   background:var(--surface);color:var(--ink);font-size:14px;font-family:inherit;
 }
+.suggest{display:flex;gap:6px;flex-wrap:wrap;align-items:center;margin-top:9px;min-height:34px}
+.sug{
+  border:1px solid var(--line-2);background:var(--surface);border-radius:99px;
+  padding:5px 12px;cursor:pointer;display:inline-flex;align-items:center;gap:7px;
+  font-family:"Source Serif 4",Georgia,serif;font-size:15.5px;line-height:1.2;
+}
+.sug:hover{border-color:var(--accent);background:var(--accent-soft)}
+.sug.ctx{border-style:dashed}
+.sug[data-lang="FRENCH"]{color:var(--ink-2);font-style:italic}
+.sug .k{
+  font-family:"IBM Plex Mono",monospace;font-size:10px;letter-spacing:.03em;
+  color:var(--ink-3);border:1px solid var(--line);border-radius:3px;padding:0 4px;font-style:normal;
+}
+.suggest .why{font-size:11.5px;color:var(--ink-3);letter-spacing:.02em}
 .actions{display:flex;gap:9px;flex-wrap:wrap;margin-top:6px}
 .keys{margin-top:22px;padding-top:14px;border-top:1px solid var(--line);font-size:12px;color:var(--ink-3);display:flex;gap:16px;flex-wrap:wrap}
 kbd{
@@ -226,6 +240,7 @@ kbd{
     <div class="field">
       <div class="label"><label for="edit">Correction gcf</label></div>
       <textarea id="edit" class="kreyol" spellcheck="false" placeholder="Écris ici la version créole guadeloupéenne correcte…"></textarea>
+      <div class="suggest" id="suggest" aria-label="Suggestions kréyòl"></div>
       <div class="actions">
         <button class="btn" id="fill">Partir de la pré-correction</button>
         <button class="btn" id="copysrc">Copier la source</button>
@@ -244,6 +259,7 @@ kbd{
       <span><kbd>Ctrl</kbd>+<kbd>Entrée</kbd> valider et suivant</span>
       <span><kbd>Alt</kbd>+<kbd>↑</kbd> <kbd>↓</kbd> segment précédent / suivant</span>
       <span><kbd>Ctrl</kbd>+<kbd>Espace</kbd> réécouter</span>
+      <span><kbd>Tab</kbd> accepter la suggestion</span>
       <span id="mode"></span>
     </div>
   </main>
@@ -251,6 +267,7 @@ kbd{
 
 <div class="toast" id="toast" role="status" aria-live="polite"></div>
 
+<script src="assets/kreyol/simulateur-engine.js"></script>
 <script>
 const DATA = [{"id":"diag_0000","idx":"16","ref":"data/diagnostic_audio/audio/0a9b34f4_vocals.mp3_segment_68644_75377.mp3","src":"viè madamn la téni on kaz an pay, dèyè kaz la téni on pié piman chalè a viè fanm la","pre":"viè madamn la téni on kaz an pay, dèyè kaz la téni on pié piman chalè a viè fanm la","audio":"audio/0a9b34f4_vocals.mp3_segment_68644_75377.mp3"},{"id":"diag_0001","idx":"43","ref":"data/diagnostic_audio/audio/415dc2bd_vocals.mp3_segment_916410_919499.mp3","src":"Mezon asi karaje, mezon asa. Le ou vini?","pre":"Mezon asi karajé, mezon asa. Le ou vini?","audio":"audio/415dc2bd_vocals.mp3_segment_916410_919499.mp3"},{"id":"diag_0002","idx":"70","ref":"data/diagnostic_audio/audio/10a82d81_vocals.mp3_segment_781275_787975.mp3","src":"Men nou nou ka sevi èvè èr an nou an tout sans. dayè pou yonn menm fwaz initil la ka di wii nèg paka prononsè èr sa sé kouyonnad.","pre":"Mé nou nou ka sevi èvè èr an nou an tout sans. dayè pou yonn menm fwaz initil la ka di wii nèg paka prononsè èr sa sé kouyonnad.","audio":"audio/10a82d81_vocals.mp3_segment_781275_787975.mp3"},{"id":"diag_0003","idx":"71","ref":"data/diagnostic_audio/audio/c9b84dcd_vocals.mp3_segment_537381_542174.mp3","src":"Sa ka permet mwen an konet saluyè on not fanmam ki ka poté manev Chantal L.","pre":"Sa ka permet an an konet saluyè on not fanmam ki ka poté manev Chantal I.","audio":"audio/c9b84dcd_vocals.mp3_segment_537381_542174.mp3"},{"id":"diag_0004","idx":"14","ref":"data/diagnostic_audio/audio/e4ca4d9a_vocals.mp3_segment_2239410_2242583.mp3","src":"ouais an té vlé aille","pre":"ouais an té vlé aillé","audio":"audio/e4ca4d9a_vocals.mp3_segment_2239410_2242583.mp3"},{"id":"diag_0005","idx":"31","ref":"data/diagnostic_audio/audio/448c719b_vocals.mp3_segment_880467_890710.mp3","src":"Koi chanjé et quante la sa? Grand guel, gros vent, jambes fines. Mais voilà. Jambes en moins fines. C'est ça qui est marqué en les premières phrases-là. Donc, Adam jambes. On y en.","pre":"Koi chanjé et quanté la sa? Grand guel, gros vent, jambes fines. Mais voilà. Jambes en moins fines. C'est ça qui est marqué en les premières phrases-là. Donc, Adam jambes. On y en.","audio":"audio/448c719b_vocals.mp3_segment_880467_890710.mp3"},{"id":"diag_0006","idx":"77","ref":"data/diagnostic_audio/audio/418868cf_vocals.mp3_segment_271296_273574.mp3","src":"Pli adoumanman, cé gaté.","pre":"Pli adoumanman, cé gaté.","audio":"audio/418868cf_vocals.mp3_segment_271296_273574.mp3"},{"id":"diag_0007","idx":"57","ref":"data/diagnostic_audio/audio/442284b4_vocals.mp3","src":"é en mèmntan an komewsan an ka venn, alos an ka trouvéw entre les dé, fo fè komprenn anmenn tan on ti éfow pou nou ékilibré pa rapow à fwi la é kalité à pwoduila","pre":"é en mèmntan an komewsan an ka venn, alos an ka trouvéw entré les dé, fo fè komprenn anmenn tan on ti éfow pou nou ékilibré pa rapow à fwi la é kalité à pwoduila","audio":"audio/442284b4_vocals.mp3"},{"id":"diag_0008","idx":"76","ref":"data/diagnostic_audio/audio/f730f158_vocals.mp3_segment_713742_715885.mp3","src":"é i baléyé douvan pot la ban mwen","pre":"é i baléyé douvan pot la ban an","audio":"audio/f730f158_vocals.mp3_segment_713742_715885.mp3"},{"id":"diag_0009","idx":"68","ref":"data/diagnostic_audio/audio/70907809_vocals.mp3_segment_231674_235892.mp3","src":"I vwé ankadans, misik sidéral","pre":"I vwé ankadans, misik sidéral","audio":"audio/70907809_vocals.mp3_segment_231674_235892.mp3"},{"id":"diag_0010","idx":"60","ref":"data/diagnostic_audio/audio/7620c6fc_vocals.mp3_segment_122847_124855.mp3","src":"La vi té téké pli bèl!","pre":"La vi té téké pli bèl!","audio":"audio/7620c6fc_vocals.mp3_segment_122847_124855.mp3"},{"id":"diag_0011","idx":"33","ref":"data/diagnostic_audio/audio/0a9b34f4_vocals.mp3_segment_65590_68610.mp3","src":"Lari zabim teni an vyé mandam.","pre":"Lari zabim teni an vyé mandam.","audio":"audio/0a9b34f4_vocals.mp3_segment_65590_68610.mp3"},{"id":"diag_0012","idx":"0","ref":"data/diagnostic_audio/audio/3d0602e9_vocals.mp3_segment_573679_576177.mp3","src":"On jenn tirè asi on jenn,","pre":"On jenn tirè asi on jenn,","audio":"audio/3d0602e9_vocals.mp3_segment_573679_576177.mp3"},{"id":"diag_0013","idx":"11","ref":"data/diagnostic_audio/audio/8a9dcb78_vocals.mp3","src":"Sé dé moun ki répond lè la gwadeloup té bizoin yo é yo toujou té sa rété à place à yo mè yo té ka passé à dan on fonction donèw dabô sans avansé é san fè les otes avansé. pas yo ni un pwinsip ki di ou ka najé fo ou kaye o laje","pre":"Sé dé moun ki répond lè la gwadeloup té bizoin yo é yo toujou té sa rété à placé à yo mè yo té ka passé à dan on fonction donèw dabô sans avansé é san fè les otes avansé. pas yo ni un pwinsip ki di ou ka najé fo ou kayé o lajé","audio":"audio/8a9dcb78_vocals.mp3"},{"id":"diag_0014","idx":"15","ref":"data/diagnostic_audio/audio/c4e42530_vocals.mp3","src":"Ou antwé andidan kò a moun-la ou ka pran pis ki on blan, pis ki on fransé, pis ki sa si, pis ki sa la, pis ki tout biten.","pre":"Ou antwé andidan kò a moun-la ou ka pran pis ki on blan, pis ki on fransé, pis ki sa si, pis ki sa la, pis ki tout biten.","audio":"audio/c4e42530_vocals.mp3"},{"id":"diag_0015","idx":"39","ref":"data/diagnostic_audio/audio/e2a666d6_vocals.mp3","src":"Nou an twa chimen karak,lolo a Mikaela ka rezisté, i la dépi 55 lanné","pre":"Nou an twa chimen karak, lolo a Mikaela ka rezisté, i la dépi 55 lanné","audio":"audio/e2a666d6_vocals.mp3"},{"id":"diag_0016","idx":"13","ref":"data/diagnostic_audio/audio/22fc5ae0_vocals.mp3_segment_290449_294887.mp3","src":"An, pa menm biten ki ann, davwa lè ou ka kriyé Lilian ou pa kriyé Liliann.","pre":"An, pa menm biten ki ann, davwa lè ou ka kriyé Lilian ou pa kriyé Liliann.","audio":"audio/22fc5ae0_vocals.mp3_segment_290449_294887.mp3"},{"id":"diag_0017","idx":"80","ref":"data/diagnostic_audio/audio/1462388b_vocals.mp3_segment_40514_42741.mp3","src":"qu'est-ce que le monsieur veut dire? maman, nous allons voler les mandarines de M. Robert, Nous allons voler les mandarines de M. Robert? aïe bon dieu seigneur l'abé\"","pre":"qu'est-ce qué le monsieur veut diré? maman, nous allons voler les mandarines de An. Robert, Nous allons voler les mandarines de An. Robert? aïé bon dieu seigneur l'abé \"","audio":"audio/1462388b_vocals.mp3_segment_40514_42741.mp3"},{"id":"diag_0018","idx":"73","ref":"data/diagnostic_audio/audio/9448e063_vocals.mp3_segment_106782_110460.mp3","src":"Kempé asi mès é labitid!. Kampo.","pre":"Kempé asi mès é labitid!. Kampo.","audio":"audio/9448e063_vocals.mp3_segment_106782_110460.mp3"},{"id":"diag_0019","idx":"56","ref":"data/diagnostic_audio/audio/0776d9f1_vocals.mp3","src":"viande haché an ka mette lasagne au légume exetera et donc an pas aussi","pre":"viandé haché an ka metté lasagné au légumé exetera et donc an pas aussi","audio":"audio/0776d9f1_vocals.mp3"},{"id":"diag_0020","idx":"61","ref":"data/diagnostic_audio/audio/b960f232_vocals.mp3_segment_65337_69319.mp3","src":"Ô! Sonjé mwen!","pre":"Ô! Sonjé an!","audio":"audio/b960f232_vocals.mp3_segment_65337_69319.mp3"},{"id":"diag_0021","idx":"47","ref":"data/diagnostic_audio/audio/c6463dda_vocals.mp3_segment_1514309_1517346.mp3","src":"Ga kon sé ka pa roulé, ga kon sé konsa","pre":"Ga kon sé ka pa roulé, ga kon sé konsa","audio":"audio/c6463dda_vocals.mp3_segment_1514309_1517346.mp3"},{"id":"diag_0022","idx":"34","ref":"data/diagnostic_audio/audio/e55a7ce6_vocals.mp3_segment_3996_7540.mp3","src":"on sel biten ki toujou fè mwen plézi","pre":"on sel biten ki toujou fè an plézi","audio":"audio/e55a7ce6_vocals.mp3_segment_3996_7540.mp3"},{"id":"diag_0023","idx":"62","ref":"data/diagnostic_audio/audio/e55a7ce6_vocals.mp3_segment_164950_170704.mp3","src":"Pa di, pa di, kochon, sé on bèt ki malpwop","pre":"Pa di, pa di, kochon, sé on bèt ki malpwop","audio":"audio/e55a7ce6_vocals.mp3_segment_164950_170704.mp3"},{"id":"diag_0024","idx":"22","ref":"data/diagnostic_audio/audio/a815d665_vocals.mp3_segment_1542912_1545949.mp3","src":"Ou lé moun ka vini fè karnaval à pwésan kon défoulman","pre":"Ou lé moun ka vini fè karnaval à pwésan kon défoulman","audio":"audio/a815d665_vocals.mp3_segment_1542912_1545949.mp3"},{"id":"diag_0025","idx":"81","ref":"data/diagnostic_audio/audio/6f22458e_vocals.mp3_segment_1997625_2007362.mp3","src":"an ka soulé an pay en moin, an pa la pou fè démonstration ba baba, a on moman doné fo arété","pre":"an ka soulé an pay en moin, an pa la pou fè démonstration ba baba, a on moman doné fo arété","audio":"audio/6f22458e_vocals.mp3_segment_1997625_2007362.mp3"},{"id":"diag_0026","idx":"27","ref":"data/diagnostic_audio/audio/8c354db1_vocals.mp3_segment_56629_59076.mp3","src":"Ti campo, i chalviré mwen","pre":"Ti campo, i chalviré an","audio":"audio/8c354db1_vocals.mp3_segment_56629_59076.mp3"},{"id":"diag_0027","idx":"17","ref":"data/diagnostic_audio/audio/c5c201fc_vocals.mp3","src":"Men, ki pwoblèm aw!","pre":"Mé, ki pwoblèm aw!","audio":"audio/c5c201fc_vocals.mp3"},{"id":"diag_0028","idx":"24","ref":"data/diagnostic_audio/audio/09e14773_vocals.mp3","src":"Fò fét tou lé papyé ki fo pou pé asuré padavwa a partir du moman ou tini on véikul an chemin ki pa ni asurans é bin Sé on kabrit ou tini. To ou tar la jandameri pé ramasé a ninpotkimoman","pre":"Fò fét tou lé papyé ki fo pou pé asuré padavwa a partir du moman ou tini on véikul an chemin ki pa ni asurans é bin Sé on kabrit ou tini. To ou tar la jandameri pé ramasé a ninpotkimoman","audio":"audio/09e14773_vocals.mp3"},{"id":"diag_0029","idx":"55","ref":"data/diagnostic_audio/audio/19cfc7e5_vocals.mp3","src":"Paskè soup a Kongo la, sé on migan a tout sa ki ka soti an jadin la.","pre":"Paskè soup a Kongo la, sé on migan a tout sa ki ka soti an jadin la.","audio":"audio/19cfc7e5_vocals.mp3"},{"id":"diag_0030","idx":"26","ref":"data/diagnostic_audio/audio/Hommage_a_Mme_Lucette_MICHAUX_CHEVRY_12_9_2021.mp3_segment_580632_583872.mp3","src":"èvè plis vwa ki té pé ni.","pre":"èvè plis vwa ki té pé ni.","audio":"audio/Hommage_a_Mme_Lucette_MICHAUX_CHEVRY_12_9_2021.mp3_segment_580632_583872.mp3"},{"id":"diag_0031","idx":"51","ref":"data/diagnostic_audio/audio/c9b84dcd_vocals.mp3_segment_30962_37965.mp3","src":"H la sonné Hèp! pas ke sé on H aspiré Hèp! A pa on mo de hèp. Sé pou H la la, pas ke i pa tèbè","pre":"H la sonné Hèp! pas ke sé on H aspiré Hèp! A pa on mo de hèp. Sé pou H la la, pas ke i pa tèbè","audio":"audio/c9b84dcd_vocals.mp3_segment_30962_37965.mp3"},{"id":"diag_0032","idx":"35","ref":"data/diagnostic_audio/audio/0a9b34f4_vocals.mp3_segment_2950_12720.mp3","src":"lari zabim téni on vyè madamn, vyè madamn la téni on kaz an pay, dèyè kaz la téni on pié piman, chalè a viè fanm la","pre":"lari zabim téni on vyè madamn, vyè madamn la téni on kaz an pay, dèyè kaz la téni on pié piman, chalè a viè fanm la","audio":"audio/0a9b34f4_vocals.mp3_segment_2950_12720.mp3"},{"id":"diag_0033","idx":"84","ref":"data/diagnostic_audio/audio/06e8a0ba_vocals.mp3_segment_786608_788684.mp3","src":"yo ki vlé di ke si ou ka gadé","pre":"yo ki vlé di ke si ou ka gadé","audio":"audio/06e8a0ba_vocals.mp3_segment_786608_788684.mp3"},{"id":"diag_0034","idx":"4","ref":"data/diagnostic_audio/audio/9bf65209_vocals.mp3","src":"bon kouraj nou ka kimbé rèd","pre":"bon kouraj nou ka kimbé rèd","audio":"audio/9bf65209_vocals.mp3"},{"id":"diag_0035","idx":"23","ref":"data/diagnostic_audio/audio/37d4132d_vocals.mp3_segment_127707_130592.mp3","src":"Tou sa sé monté dosyé, monté dosyé, gadé ka ou pé fè.","pre":"Tou sa sé monté dosyé, monté dosyé, gadé ka ou pé fè.","audio":"audio/37d4132d_vocals.mp3_segment_127707_130592.mp3"},{"id":"diag_0036","idx":"5","ref":"data/diagnostic_audio/audio/fb62f8c4_vocals.mp3","src":"sé moun ki té complètman aout de sa, rapidman yo entré en diapazon","pre":"sé moun ki té complètman aout de sa, rapidman yo entré en diapazon","audio":"audio/fb62f8c4_vocals.mp3"},{"id":"diag_0037","idx":"38","ref":"data/diagnostic_audio/audio/2abd3949_vocals.mp3_segment_1019736_1024005.mp3","src":"Non, non, non, non, sè tou lé jou, sè tou lé jou, sé tou lé jou.","pre":"Non, non, non, non, sè tou lé jou, sè tou lé jou, sé tou lé jou.","audio":"audio/2abd3949_vocals.mp3_segment_1019736_1024005.mp3"},{"id":"diag_0038","idx":"37","ref":"data/diagnostic_audio/audio/49d18597_vocals.mp3_segment_644402_650106.mp3","src":"Le ou di zyé ou pa méteye o pluriel, o sengilié ou ka di on zyé Le ou di zyé ou pa méteye o plirièl, o sengilié ou ka di on zyé.","pre":"Le ou di zyé ou pa méteyé o pluriel, o sengilié ou ka di on zyé Le ou di zyé ou pa méteyé o plirièl, o sengilié ou ka di on zyé.","audio":"audio/49d18597_vocals.mp3_segment_644402_650106.mp3"},{"id":"diag_0039","idx":"19","ref":"data/diagnostic_audio/audio/Gwoup_50_50_an_repetisyon.mp3_segment_517064_519122.mp3","src":"Sa sé on biten, ki trè enpòtan","pre":"Sa sé on biten, ki trè enpòtan","audio":"audio/Gwoup_50_50_an_repetisyon.mp3_segment_517064_519122.mp3"},{"id":"diag_0040","idx":"50","ref":"data/diagnostic_audio/audio/c9b84dcd_vocals.mp3_segment_852960_856724.mp3","src":"Montè an lè on pyé bwa, pou mwen vwè longè a bwa la","pre":"Montè an lè on pyé bwa, pou an vwè longè a bwa la","audio":"audio/c9b84dcd_vocals.mp3_segment_852960_856724.mp3"},{"id":"diag_0041","idx":"32","ref":"data/diagnostic_audio/audio/c9b84dcd_vocals.mp3_segment_155365_160090.mp3","src":"Le ou komanse rentré adan zekal. Gay on koko sek","pre":"Le ou komansé rentré adan zekal. Gay on koko sek","audio":"audio/c9b84dcd_vocals.mp3_segment_155365_160090.mp3"},{"id":"diag_0042","idx":"10","ref":"data/diagnostic_audio/audio/d6fc3092_vocals.mp3_segment_198885_202277.mp3","src":"ou té ka vin o swè la, o swè la!","pre":"ou té ka vin o swè la, o swè la!","audio":"audio/d6fc3092_vocals.mp3_segment_198885_202277.mp3"},{"id":"diag_0043","idx":"83","ref":"data/diagnostic_audio/audio/9448e063_vocals.mp3_segment_354962_358742.mp3","src":"Ou ja ni abiti la di meni, a par tou selan, kavon lom ou nan gwa lom ki.","pre":"Ou ja ni abiti la di meni, a par tou selan, kavon lom ou adan gwa lom ki.","audio":"audio/9448e063_vocals.mp3_segment_354962_358742.mp3"},{"id":"diag_0044","idx":"20","ref":"data/diagnostic_audio/audio/a4e4f5c3_vocals.mp3_segment_254202_257577.mp3","src":"an té vlé yo krié oh! oh","pre":"an té vlé yo krié oh! oh","audio":"audio/a4e4f5c3_vocals.mp3_segment_254202_257577.mp3"},{"id":"diag_0045","idx":"1","ref":"data/diagnostic_audio/audio/c9b84dcd_vocals.mp3_segment_515241_517502.mp3","src":"woulo, bravo pou é tin bwa dèyè","pre":"woulo, bravo pou é tin bwa dèyè","audio":"audio/c9b84dcd_vocals.mp3_segment_515241_517502.mp3"},{"id":"diag_0046","idx":"25","ref":"data/diagnostic_audio/audio/3d0602e9_vocals.mp3_segment_176999_181116.mp3","src":"Aka woupwan entélektiel asi niyaj.","pre":"Aka woupwan entélektiel asi niyaj.","audio":"audio/3d0602e9_vocals.mp3_segment_176999_181116.mp3"},{"id":"diag_0047","idx":"36","ref":"data/diagnostic_audio/audio/c9b84dcd_vocals.mp3_segment_601675_604037.mp3","src":"O Moul, Bastè é Jari.","pre":"O Moul, Bastè é Jari.","audio":"audio/c9b84dcd_vocals.mp3_segment_601675_604037.mp3"},{"id":"diag_0048","idx":"41","ref":"data/diagnostic_audio/audio/f2926fd0_vocals.mp3_segment_94800_115034.mp3","src":"O, m'si, m'si, m'si, m'si. O, m'anje la. O, m'anje la. Pase, ante ka passe. O, m'anje la. A, vitou ve m'an bo kli zi namre. O, m'anje la. Ma po an ode a vip na. O, m'anje la","pre":"O, m'si, m'si, m'si, m'si. O, m'anjé la. O, m'anjé la. Pasé, anté ka passé. O, m'anjé la. A, vitou ve m'an bo kli zi namré. O, m'anjé la. Ma po an odé a vip na. O, m'anjé la","audio":"audio/f2926fd0_vocals.mp3_segment_94800_115034.mp3"},{"id":"diag_0049","idx":"58","ref":"data/diagnostic_audio/audio/f9a06b6d_vocals.mp3","src":"an mété moin osi et an fè pin pou yo venn et sa kontinué jika présan","pre":"an mété moin osi et an fè pin pou yo venn et sa kontinué jika présan","audio":"audio/f9a06b6d_vocals.mp3"},{"id":"diag_0050","idx":"2","ref":"data/diagnostic_audio/audio/c9b84dcd_vocals.mp3_segment_604037_613977.mp3","src":"mèsi onpil. Bon, Benzo, kan nou kwa fe? Kan nou kwa fe? Bandou sa, porté manè nou en ritat. Nou tout kabakia dan bispo. Jan, Jan, Jan, Jan. Ok.","pre":"mèsi onpil. Bon, Benzo, kan nou kwa fe? Kan nou kwa fe? Bandou sa, porté manè nou en ritat. Nou tout kabakia dan bispo. Jan, Jan, Jan, Jan. Ok.","audio":"audio/c9b84dcd_vocals.mp3_segment_604037_613977.mp3"},{"id":"diag_0051","idx":"69","ref":"data/diagnostic_audio/audio/c9b84dcd_vocals.mp3_segment_533989_536605.mp3","src":"I ka fè parti de la kompani difé kako","pre":"I ka fè parti de la kompani difé kako","audio":"audio/c9b84dcd_vocals.mp3_segment_533989_536605.mp3"},{"id":"diag_0052","idx":"42","ref":"data/diagnostic_audio/audio/d305ac73_vocals.mp3","src":"E ni demoun ki koupe avè sé valè la sa, ki pa janmen te intégré se valè la sa. Donk certen etranjé. Pa tout, men certen étranjé. E adan se certen étranjé a pa tout se étranjé la ki ni menm valè la sa.","pre":"E ni demoun ki koupé èvè sé valè la sa, ki pa janmen té intégré sé valè la sa. Donk certen etranjé. Pa tout, mé certen étranjé. E adan sé certen étranjé a pa tout sé étranjé la ki ni menm valè la sa.","audio":"audio/d305ac73_vocals.mp3"},{"id":"diag_0053","idx":"18","ref":"data/diagnostic_audio/audio/ef6067a2_vocals.mp3_segment_172797_176880.mp3","src":"sa pé ké pi bel pou nou","pre":"sa pé ké pi bel pou nou","audio":"audio/ef6067a2_vocals.mp3_segment_172797_176880.mp3"},{"id":"diag_0054","idx":"85","ref":"data/diagnostic_audio/audio/a815d665_vocals.mp3_segment_1262719_1265048.mp3","src":"Sé mo kafa ki té kréé groupla","pre":"Sé mo kafa ki té kréé groupla","audio":"audio/a815d665_vocals.mp3_segment_1262719_1265048.mp3"},{"id":"diag_0055","idx":"3","ref":"data/diagnostic_audio/audio/RUE_DE_LARTISANAT_VIEUX_HABITANTS.mp3_segment_206918_209382.mp3","src":"yo ké vouè si yo pé dékoré plats aw","pre":"yo ké vouè si yo pé dékoré plats aw","audio":"audio/RUE_DE_LARTISANAT_VIEUX_HABITANTS.mp3_segment_206918_209382.mp3"},{"id":"diag_0056","idx":"74","ref":"data/diagnostic_audio/audio/9448e063_vocals.mp3_segment_462642_466979.mp3","src":"Me kou an di, si se menm mo la ou ma ke evè double ve ou ben eon.","pre":"Me kou an di, si sé menm mo la ou ma ke evè doublé ve ou ben eon.","audio":"audio/9448e063_vocals.mp3_segment_462642_466979.mp3"},{"id":"diag_0057","idx":"65","ref":"data/diagnostic_audio/audio/2abd3949_vocals.mp3_segment_1168979_1171139.mp3","src":"Bien bonjou, bien bonjou, bien bonjou.","pre":"Bien bonjou, bien bonjou, bien bonjou.","audio":"audio/2abd3949_vocals.mp3_segment_1168979_1171139.mp3"},{"id":"diag_0058","idx":"45","ref":"data/diagnostic_audio/audio/415dc2bd_vocals.mp3_segment_1691159_1693504.mp3","src":"Omari mò, madanm la è ti moun la.","pre":"Omari mò, madanm la è ti moun la.","audio":"audio/415dc2bd_vocals.mp3_segment_1691159_1693504.mp3"},{"id":"diag_0059","idx":"78","ref":"data/diagnostic_audio/audio/c7389f31_vocals.mp3_segment_891300_893545.mp3","src":"Quatre du matin a sonner","pre":"Quatré du matin a sonner","audio":"audio/c7389f31_vocals.mp3_segment_891300_893545.mp3"},{"id":"diag_0060","idx":"79","ref":"data/diagnostic_audio/audio/de6411f1_vocals.mp3_segment_1937770_1941162.mp3","src":"ke mwen an mè dèpi 10 an é demi, men nou gwadloupéen fwami an nou.","pre":"ke an an mè dèpi 10 an é demi, mé nou gwadloupéen fwami an nou.","audio":"audio/de6411f1_vocals.mp3_segment_1937770_1941162.mp3"},{"id":"diag_0061","idx":"54","ref":"data/diagnostic_audio/audio/c9b84dcd_vocals.mp3_segment_274317_279885.mp3","src":"pou moun qui té conèt., c'est Maxime C. qui gannyé le tour de la Gwadeloup","pre":"pou moun qui té conèt., c'est Maximé C. qui gannyé le tour de la Gwadeloup","audio":"audio/c9b84dcd_vocals.mp3_segment_274317_279885.mp3"},{"id":"diag_0062","idx":"9","ref":"data/diagnostic_audio/audio/a815d665_vocals.mp3_segment_769244_780128.mp3","src":"Fote ma ke mas a Saint-Jean. E mwen an komanse ka ma ke tout douceman, reminisan san mwen, souvenir danfan san mwen. E pi, anjou, an pran la desisyon","pre":"Foté ma ke mas a Saint-Jean. E an an komansé ka ma ke tout douceman, reminisan san an, souvenir danfan san an. E pi, anjou, an pran la desisyon","audio":"audio/a815d665_vocals.mp3_segment_769244_780128.mp3"},{"id":"diag_0063","idx":"52","ref":"data/diagnostic_audio/audio/c9b84dcd_vocals.mp3_segment_598266_601405.mp3","src":"E nou tini, bien entendu, Libri Général.","pre":"E nou tini, bien entendu, Libri Général.","audio":"audio/c9b84dcd_vocals.mp3_segment_598266_601405.mp3"},{"id":"diag_0064","idx":"59","ref":"data/diagnostic_audio/audio/2abd3949_vocals.mp3_segment_728237_734160.mp3","src":"É an ka di'ou sé moun la trè, trè kontan, men ni sa kika pléré lè yo vwè.","pre":"É an ka di'ou sé moun la trè, trè kontan, mé ni sa kika pléré lè yo vwè.","audio":"audio/2abd3949_vocals.mp3_segment_728237_734160.mp3"},{"id":"diag_0065","idx":"28","ref":"data/diagnostic_audio/audio/45d21370_vocals.mp3_segment_691889_715024.mp3","src":"Mwen, joka lese dott moun ganyi. Se kon moun lapre? Moun lapot ganyi dèfwa. La yopar, yopar dan kon. Moun zabi, se dèzem la. Se misye lo amon ki te ganyi en triko, en waseo y triko. Mwen la, misye a desabi e mwen a se plateau la. Ebe se yon te ganyi tiko la. La seman passe bou ka re te zabi. Men be, abimien, jokalese dott moun ganyi. Mwen si an pil.","pre":"An, joka lesé dott moun ganyi. Sé kon moun lapré? Moun lapot ganyi dèfwa. La yopar, yopar dan kon. Moun zabi, sé dèzem la. Sé misyé lo amon ki té ganyi en triko, en waseo y triko. An la, misyé a desabi é an a sé plateau la. Ebé sé yon té ganyi tiko la. La seman passé bou ka re té zabi. Mé be, abimien, jokalesé dott moun ganyi. An si an pil.","audio":"audio/45d21370_vocals.mp3_segment_691889_715024.mp3"},{"id":"diag_0066","idx":"82","ref":"data/diagnostic_audio/audio/c9b84dcd_vocals.mp3_segment_331827_335219.mp3","src":"An komansé komandé avè négoss, é.","pre":"An komansé komandé èvè négoss, é.","audio":"audio/c9b84dcd_vocals.mp3_segment_331827_335219.mp3"},{"id":"diag_0067","idx":"48","ref":"data/diagnostic_audio/audio/8b338c3d_vocals.mp3_segment_312606_315964.mp3","src":"é mé ki moun ou yé mèm, ban nou, ban nou on nouvèl, baw","pre":"é mé ki moun ou yé mèm, ban nou, ban nou on nouvèl, baw","audio":"audio/8b338c3d_vocals.mp3_segment_312606_315964.mp3"},{"id":"diag_0068","idx":"66","ref":"data/diagnostic_audio/audio/e55a7ce6_vocals.mp3_segment_239807_242760.mp3","src":"An téni, on gwo rat","pre":"An téni, on gwo rat","audio":"audio/e55a7ce6_vocals.mp3_segment_239807_242760.mp3"},{"id":"diag_0069","idx":"40","ref":"data/diagnostic_audio/audio/77f6a780_vocals.mp3_segment_640960_643390.mp3","src":"Deschanel fait, on pil","pre":"Deschanel fait, on pil","audio":"audio/77f6a780_vocals.mp3_segment_640960_643390.mp3"},{"id":"diag_0070","idx":"53","ref":"data/diagnostic_audio/audio/332a4e2f_vocals.mp3_segment_273726_279194.mp3","src":"Benzo bien bonswa. Bien bonnswa. Aka pasew la parol. *","pre":"Benzo bien bonswa. Bien bonnswa. Aka pasew la parol. *","audio":"audio/332a4e2f_vocals.mp3_segment_273726_279194.mp3"},{"id":"diag_0071","idx":"64","ref":"data/diagnostic_audio/audio/69c479d9_vocals.mp3_segment_163870_171194.mp3","src":"gran grèc a gramè kakrièsa lagliyaj ki vlé di an fransé \"agglutination.\"","pre":"gran grèc a gramè kakrièsa lagliyaj ki vlé di an fransé \" agglutination. \"","audio":"audio/69c479d9_vocals.mp3_segment_163870_171194.mp3"},{"id":"diag_0072","idx":"12","ref":"data/diagnostic_audio/audio/fbefc47b_vocals.mp3_segment_271971_278586.mp3","src":"Ou ja palé ban mwen tròp ou ja fè mwen konprann nou pé fè on lo biten ansam","pre":"Ou ja palé ban an tròp ou ja fè an konprann nou pé fè on lo biten ansam","audio":"audio/fbefc47b_vocals.mp3_segment_271971_278586.mp3"},{"id":"diag_0073","idx":"75","ref":"data/diagnostic_audio/audio/2abd3949_vocals.mp3_segment_493287_495599.mp3","src":"Ok, mèsi. Ok, bon kouraj.","pre":"Ok, mèsi. Ok, bon kouraj.","audio":"audio/2abd3949_vocals.mp3_segment_493287_495599.mp3"},{"id":"diag_0074","idx":"49","ref":"data/diagnostic_audio/audio/0a9b34f4_vocals.mp3_segment_13514_18154.mp3","src":"Tchoué pié piman la chè. La la la la la la la","pre":"Tchoué pié piman la chè. La la la la la la la","audio":"audio/0a9b34f4_vocals.mp3_segment_13514_18154.mp3"},{"id":"diag_0075","idx":"8","ref":"data/diagnostic_audio/audio/22fc5ae0_vocals.mp3_segment_165_3507.mp3","src":"monté adan on pyé bwa, pou mwen vwé longè a bwa la","pre":"monté adan on pyé bwa, pou an vwé longè a bwa la","audio":"audio/22fc5ae0_vocals.mp3_segment_165_3507.mp3"},{"id":"diag_0076","idx":"72","ref":"data/diagnostic_audio/audio/a815d665_vocals.mp3_segment_274840_278974.mp3","src":"Mwen konèt ou frèch ou bel kon zépina ki pousè an kaka","pre":"An konèt ou frèch ou bel kon zépina ki pousè an kaka","audio":"audio/a815d665_vocals.mp3_segment_274840_278974.mp3"},{"id":"diag_0077","idx":"44","ref":"data/diagnostic_audio/audio/8ddd593c_vocals.mp3_segment_631510_638294.mp3","src":"Alò, toujou adan, i adan tex la pa enkiété zòt biten. E gadé bien, an makè biten ni kat son.","pre":"Alò, toujou adan, i adan tex la pa enkiété zòt biten. E gadé bien, an makè biten ni kat son.","audio":"audio/8ddd593c_vocals.mp3_segment_631510_638294.mp3"},{"id":"diag_0078","idx":"6","ref":"data/diagnostic_audio/audio/8c4444a1_vocals.mp3_segment_104200_107237.mp3","src":"mwen lévé et tout moun té ka palé kréyòl","pre":"an lévé et tout moun té ka palé kréyòl","audio":"audio/8c4444a1_vocals.mp3_segment_104200_107237.mp3"},{"id":"diag_0079","idx":"29","ref":"data/diagnostic_audio/audio/88e7be88_vocals.mp3","src":"A pa kantité manjé la nou ka manjé a pa rempli yon zasiette avè di riz pwa rouge avè dombre","pre":"A pa kantité manjé la nou ka manjé a pa rempli yon zasietté èvè di riz pwa rougé èvè dombré","audio":"audio/88e7be88_vocals.mp3"}];
 const KEY = "gcf-diag-v1";
@@ -374,6 +391,7 @@ function go(i){
   el("cur").textContent = "0:00"; el("dur").textContent = "0:00"; el("scrub").value = 0;
   paint();
   renderList();
+  refreshSuggest();
   const cur = rowsEl.querySelector('[aria-current="true"]');
   if(cur) cur.scrollIntoView({block:"nearest"});
 }
@@ -398,6 +416,7 @@ el("edit").addEventListener("input", e => {
   state[active].corrected = e.target.value;
   if(e.target.value.trim()) state[active].skipped = false;
   persist();
+  refreshSuggest();
   clearTimeout(paintTimer); paintTimer = setTimeout(() => { paint(); renderList(); }, 220);
   el("saved").textContent = "brouillon enregistré";
 });
@@ -446,11 +465,127 @@ document.querySelectorAll(".rate").forEach(r => r.addEventListener("click", () =
   r.setAttribute("aria-pressed","true"); audio.playbackRate = Number(r.dataset.rate);
 }));
 
+/* ---------- prédiction kréyòl (moteur KreyolKeyb) ---------- */
+/* Le chargeur du lexique est fourni par la construction : requêtes séparées
+   sur GitHub Pages, données embarquées dans l'artifact où le CSP interdit
+   toute requête sortante. */
+async function loadLexicon(){
+  const j = p => fetch(p, {cache:"force-cache"}).then(r => r.ok ? r.json() : null);
+  const [dict, ngrams, french] = await Promise.all([
+    j("assets/kreyol/creole_dict.json"),
+    j("assets/kreyol/creole_ngrams.json"),
+    j("assets/kreyol/french_simple_dict.json"),
+  ]);
+  return {dict, ngrams, french};
+}
+
+let engine = null;
+const WORD_RE = /[\p{L}\p{M}'\u2019-]+/gu;
+const TAIL_RE = /[\p{L}\p{M}'\u2019-]*$/u;
+/* Portion du mot située APRÈS le curseur : accepter une suggestion remplace
+   le mot entier, sinon `kra|b!` + « krab » donnerait « krab b! ». */
+const HEAD_RE = /^[\p{L}\p{M}'\u2019-]*/u;
+
+async function bootPredict(){
+  if(typeof KreyolSimulatorEngine === "undefined") return;
+  let lex = null;
+  try{ lex = await loadLexicon(); }catch(e){ return; }
+  if(!lex || !lex.dict) return;
+  const e = new KreyolSimulatorEngine.SuggestionEngine();
+  e.loadDictionary(lex.dict);
+  e.loadNgramModel(lex.ngrams || {});
+  if(lex.french) e.loadFrenchDictionary(lex.french);
+  engine = e;
+  refreshSuggest();
+}
+
+function tail(){
+  const ta = el("edit"), pos = ta.selectionStart;
+  const before = ta.value.slice(0, pos);
+  const m = before.match(TAIL_RE);
+  return {before, partial: m ? m[0] : "", pos};
+}
+
+function refreshSuggest(){
+  const box = el("suggest");
+  if(!engine){ box.replaceChildren(); return; }
+  const {before, partial} = tail();
+  let items = [];
+  if(partial.length >= 1){
+    items = engine.generateBilingualSuggestions(partial)
+      .filter(s => s.word.toLowerCase() !== partial.toLowerCase())
+      .map(s => ({word:s.word, lang:s.language, ctx:false}));
+  }else{
+    /* Après une espace : bigrammes. On reconstruit l'historique depuis le texte
+       plutôt que de l'accumuler, car le curseur peut sauter n'importe où. */
+    const ctx = (before.match(WORD_RE) || []).slice(-5);
+    if(ctx.length){
+      engine.clearHistory();
+      ctx.forEach(w => engine.addWordToHistory(w));
+      items = engine.generateContextualSuggestions().map(w => ({word:w, lang:"KREYOL", ctx:true}));
+    }
+  }
+  const frag = document.createDocumentFragment();
+  items.slice(0,5).forEach((it,i) => {
+    const b = document.createElement("button");
+    b.type = "button"; b.className = "sug" + (it.ctx ? " ctx" : "");
+    b.dataset.lang = it.lang || "KREYOL"; b.dataset.word = it.word;
+    b.appendChild(document.createTextNode(it.word));
+    if(i === 0){ const k = document.createElement("span"); k.className = "k"; k.textContent = "Tab"; b.appendChild(k); }
+    frag.appendChild(b);
+  });
+  if(items.length){
+    const why = document.createElement("span");
+    why.className = "why";
+    why.textContent = items[0].ctx ? "mot suivant probable" : "complétion accentuée";
+    frag.appendChild(why);
+  }
+  box.replaceChildren(frag);
+}
+
+function acceptSuggestion(word){
+  const ta = el("edit");
+  const pos = ta.selectionStart;
+  const before = ta.value.slice(0,pos), after = ta.value.slice(pos);
+  const m = before.match(TAIL_RE); const partial = m ? m[0] : "";
+  const rest = after.replace(HEAD_RE, "");
+  /* applyCasingPattern vient du moteur : « Kre » donne « Kréyòl », pas « kréyòl ». */
+  const cased = partial ? KreyolSimulatorEngine.applyCasingPattern(partial, word) : word;
+  const head = before.slice(0, before.length - partial.length);
+  const sep = (rest === "" || /^[\s.,;:!?)]/.test(rest)) ? "" : " ";
+  const insert = cased + (rest === "" ? " " : sep);
+  ta.value = head + insert + rest;
+  const np = (head + insert).length;
+  ta.setSelectionRange(np, np);
+  ta.focus();
+  state[active].corrected = ta.value;
+  if(ta.value.trim()) state[active].skipped = false;
+  persist(); paint(); renderList(); refreshSuggest();
+}
+
+el("suggest").addEventListener("click", e => {
+  const b = e.target.closest(".sug"); if(!b) return;
+  acceptSuggestion(b.dataset.word);
+});
+el("edit").addEventListener("keyup", e => {
+  if(e.key === "Tab") return;
+  if(["ArrowLeft","ArrowRight","ArrowUp","ArrowDown","Home","End"].includes(e.key)) refreshSuggest();
+});
+el("edit").addEventListener("click", refreshSuggest);
+el("edit").addEventListener("blur", () => setTimeout(() => {
+  if(!document.activeElement || !document.activeElement.closest(".suggest")) el("suggest").replaceChildren();
+}, 120));
+el("edit").addEventListener("focus", refreshSuggest);
+
 /* ---------- clavier ---------- */
 document.addEventListener("keydown", e => {
   const typing = /^(INPUT|TEXTAREA)$/.test(document.activeElement.tagName);
   if(e.code === "Space" && e.ctrlKey){ e.preventDefault(); audio.currentTime = 0; audio.play().catch(()=>{}); return; }
   if(e.code === "Space" && !typing){ e.preventDefault(); toggle(); return; }
+  if(e.key === "Tab" && document.activeElement === el("edit")){
+    const first = el("suggest").querySelector(".sug");
+    if(first){ e.preventDefault(); acceptSuggestion(first.dataset.word); return; }
+  }
   if(e.key === "Enter" && (e.ctrlKey || e.metaKey)){ e.preventDefault(); nextTodo(); return; }
   if(e.altKey && e.key === "ArrowDown"){ e.preventDefault(); go(Math.min(active+1, DATA.length-1)); }
   if(e.altKey && e.key === "ArrowUp"){ e.preventDefault(); go(Math.max(active-1, 0)); }
@@ -502,6 +637,7 @@ el("theme").addEventListener("click", () => {
 load();
 renderList();
 go(0);
+bootPredict();
 
 (async () => {
   const ns = await useCap("artifact");
