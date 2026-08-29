@@ -1,0 +1,531 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="description" content="Correction manuelle des 80 segments diagnostiques Whisper-ht du pipeline ht-&gt;gcf.">
+<meta name="robots" content="noindex">
+<title>Diagnostic Kreyòl GCF</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wght@400;500;600;700&family=Source+Serif+4:ital,opsz,wght@0,8..60,400;0,8..60,600;1,8..60,400&family=IBM+Plex+Mono:wght@400;500&display=swap">
+<style>
+:root{
+  --ground:#F7F9FA; --surface:#FFFFFF; --surface-2:#EEF3F5;
+  --ink:#12181D; --ink-2:#44555F; --ink-3:#76888F;
+  --line:#DCE4E8; --line-2:#C3D0D6;
+  --accent:#0E7C86; --accent-ink:#FFFFFF; --accent-soft:#DBEFF1;
+  --warn:#B26A00; --warn-soft:#FBEEDA;
+  --good:#2E7D51; --good-soft:#DFF0E6;
+  --mark:#FFE9A8; --mark-ink:#5C4200;
+  --shadow:0 1px 2px rgba(18,24,29,.06),0 8px 24px rgba(18,24,29,.06);
+  --r:10px;
+}
+@media (prefers-color-scheme:dark){
+  :root:not([data-theme="light"]){
+    --ground:#0E1417; --surface:#151D22; --surface-2:#1D272D;
+    --ink:#E6EDF0; --ink-2:#A6B7C0; --ink-3:#788C96;
+    --line:#243139; --line-2:#33444E;
+    --accent:#38B0BA; --accent-ink:#062326; --accent-soft:#123B40;
+    --warn:#E0A44A; --warn-soft:#3A2C12;
+    --good:#63BE8B; --good-soft:#14301F;
+    --mark:#5A4A14; --mark-ink:#FFE9A8;
+    --shadow:0 1px 2px rgba(0,0,0,.4),0 8px 24px rgba(0,0,0,.35);
+  }
+}
+:root[data-theme="dark"]{
+  --ground:#0E1417; --surface:#151D22; --surface-2:#1D272D;
+  --ink:#E6EDF0; --ink-2:#A6B7C0; --ink-3:#788C96;
+  --line:#243139; --line-2:#33444E;
+  --accent:#38B0BA; --accent-ink:#062326; --accent-soft:#123B40;
+  --warn:#E0A44A; --warn-soft:#3A2C12;
+  --good:#63BE8B; --good-soft:#14301F;
+  --mark:#5A4A14; --mark-ink:#FFE9A8;
+  --shadow:0 1px 2px rgba(0,0,0,.4),0 8px 24px rgba(0,0,0,.35);
+}
+*{box-sizing:border-box}
+body{
+  margin:0; background:var(--ground); color:var(--ink);
+  font-family:Archivo,"Helvetica Neue",Arial,sans-serif;
+  font-size:15px; line-height:1.5;
+  -webkit-font-smoothing:antialiased;
+}
+.kreyol{font-family:"Source Serif 4",Georgia,"Times New Roman",serif}
+.mono{font-family:"IBM Plex Mono",ui-monospace,SFMono-Regular,Menlo,monospace}
+button{font-family:inherit;font-size:inherit;color:inherit}
+:focus-visible{outline:2px solid var(--accent);outline-offset:2px;border-radius:4px}
+
+/* ---------- barre haute ---------- */
+.top{
+  position:sticky;top:0;z-index:20;display:flex;align-items:center;gap:20px;
+  padding:12px 20px;background:var(--surface);border-bottom:1px solid var(--line);
+  flex-wrap:wrap;
+}
+.brand{display:flex;flex-direction:column;gap:1px;margin-right:auto}
+.brand h1{margin:0;font-size:17px;font-weight:700;letter-spacing:-.01em}
+.brand .sub{font-size:12px;color:var(--ink-3);letter-spacing:.02em}
+.meter{display:flex;align-items:center;gap:10px}
+.meter .bar{width:170px;height:7px;border-radius:99px;background:var(--surface-2);overflow:hidden}
+.meter .bar i{display:block;height:100%;background:var(--good);transition:width .3s ease}
+.meter .num{font-size:12.5px;color:var(--ink-2);font-variant-numeric:tabular-nums}
+.btn{
+  border:1px solid var(--line-2);background:var(--surface);border-radius:8px;
+  padding:7px 13px;cursor:pointer;font-weight:500;font-size:13.5px;
+  display:inline-flex;align-items:center;gap:7px;transition:background .15s,border-color .15s;
+}
+.btn:hover{background:var(--surface-2);border-color:var(--ink-3)}
+.btn.primary{background:var(--accent);border-color:var(--accent);color:var(--accent-ink)}
+.btn.primary:hover{filter:brightness(1.08)}
+.btn:disabled{opacity:.45;cursor:not-allowed}
+
+/* ---------- structure ---------- */
+.wrap{display:grid;grid-template-columns:320px minmax(0,1fr);gap:0;min-height:calc(100vh - 58px)}
+.list{border-right:1px solid var(--line);background:var(--surface);overflow-y:auto;max-height:calc(100vh - 58px);position:sticky;top:58px}
+.filters{display:flex;gap:5px;padding:10px 12px;border-bottom:1px solid var(--line);position:sticky;top:0;background:var(--surface);z-index:2}
+.chip{border:1px solid var(--line-2);background:transparent;border-radius:99px;padding:4px 10px;font-size:12px;cursor:pointer;color:var(--ink-2)}
+.chip[aria-pressed="true"]{background:var(--ink);color:var(--ground);border-color:var(--ink)}
+.row{
+  display:grid;grid-template-columns:auto 1fr;gap:9px;align-items:start;
+  width:100%;text-align:left;border:0;background:transparent;
+  padding:10px 12px;cursor:pointer;border-bottom:1px solid var(--line);
+  border-left:3px solid transparent;
+}
+.row:hover{background:var(--surface-2)}
+.row[aria-current="true"]{background:var(--accent-soft);border-left-color:var(--accent)}
+.dot{width:9px;height:9px;border-radius:50%;margin-top:6px;background:var(--line-2);flex:none}
+.row[data-state="done"] .dot{background:var(--good)}
+.row[data-state="draft"] .dot{background:var(--warn)}
+.row[data-state="skip"] .dot{background:var(--ink-3);border-radius:2px}
+.row .id{font-size:10.5px;color:var(--ink-3);letter-spacing:.04em}
+.row .txt{font-size:13px;color:var(--ink-2);display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
+
+/* ---------- panneau de travail ---------- */
+.pane{padding:22px 26px 80px;max-width:860px}
+.crumb{display:flex;align-items:center;gap:10px;margin-bottom:16px;flex-wrap:wrap}
+.crumb .seg{font-size:12px;letter-spacing:.05em;color:var(--ink-3);text-transform:uppercase}
+.tag{font-size:11.5px;padding:3px 9px;border-radius:99px;font-weight:500;letter-spacing:.02em}
+.tag.done{background:var(--good-soft);color:var(--good)}
+.tag.draft{background:var(--warn-soft);color:var(--warn)}
+.tag.skip{background:var(--surface-2);color:var(--ink-3)}
+.tag.todo{background:var(--surface-2);color:var(--ink-3)}
+
+.player{
+  display:flex;align-items:center;gap:14px;padding:14px 16px;background:var(--surface);
+  border:1px solid var(--line);border-radius:var(--r);box-shadow:var(--shadow);margin-bottom:20px;flex-wrap:wrap;
+}
+.play{
+  width:46px;height:46px;border-radius:50%;border:0;background:var(--accent);color:var(--accent-ink);
+  cursor:pointer;display:grid;place-items:center;flex:none;
+}
+.play svg{width:19px;height:19px;fill:currentColor}
+.seek{flex:1;min-width:160px;display:flex;align-items:center;gap:10px}
+.seek input[type=range]{flex:1;accent-color:var(--accent);min-width:80px}
+.time{font-size:12px;color:var(--ink-2);font-variant-numeric:tabular-nums;letter-spacing:.02em}
+.rates{display:flex;gap:4px}
+.rate{border:1px solid var(--line-2);background:transparent;border-radius:6px;padding:3px 8px;font-size:11.5px;cursor:pointer;color:var(--ink-2)}
+.rate[aria-pressed="true"]{background:var(--ink);color:var(--ground);border-color:var(--ink)}
+
+.field{margin-bottom:18px}
+.label{
+  display:flex;align-items:center;gap:8px;margin-bottom:6px;
+  font-size:11px;letter-spacing:.08em;text-transform:uppercase;color:var(--ink-3);font-weight:600;
+}
+.label .hint{text-transform:none;letter-spacing:0;font-weight:400;font-size:12px;color:var(--ink-3)}
+.ref{
+  background:var(--surface);border:1px solid var(--line);border-left:3px solid var(--line-2);
+  border-radius:var(--r);padding:12px 14px;font-size:16.5px;line-height:1.6;
+}
+.ref mark{background:var(--mark);color:var(--mark-ink);border-radius:3px;padding:0 2px}
+textarea{
+  width:100%;min-height:110px;resize:vertical;padding:12px 14px;
+  border:1px solid var(--line-2);border-radius:var(--r);background:var(--surface);color:var(--ink);
+  font-family:"Source Serif 4",Georgia,serif;font-size:16.5px;line-height:1.6;
+}
+textarea:focus{border-color:var(--accent)}
+input[type=text].notes{
+  width:100%;padding:9px 12px;border:1px solid var(--line-2);border-radius:8px;
+  background:var(--surface);color:var(--ink);font-size:14px;font-family:inherit;
+}
+.actions{display:flex;gap:9px;flex-wrap:wrap;margin-top:6px}
+.keys{margin-top:22px;padding-top:14px;border-top:1px solid var(--line);font-size:12px;color:var(--ink-3);display:flex;gap:16px;flex-wrap:wrap}
+kbd{
+  font-family:"IBM Plex Mono",monospace;font-size:11px;background:var(--surface-2);
+  border:1px solid var(--line-2);border-bottom-width:2px;border-radius:4px;padding:1px 5px;color:var(--ink-2);
+}
+.save-state{font-size:12px;color:var(--ink-3);min-height:16px}
+.toast{
+  position:fixed;left:50%;bottom:24px;transform:translateX(-50%) translateY(8px);
+  background:var(--ink);color:var(--ground);padding:10px 16px;border-radius:8px;font-size:13.5px;
+  opacity:0;pointer-events:none;transition:opacity .2s,transform .2s;z-index:50;box-shadow:var(--shadow);max-width:90vw;
+}
+.toast.on{opacity:1;transform:translateX(-50%) translateY(0)}
+@media (prefers-reduced-motion:reduce){*{transition:none!important;animation:none!important}}
+@media (max-width:820px){
+  .wrap{grid-template-columns:1fr}
+  .list{position:static;max-height:230px;border-right:0;border-bottom:1px solid var(--line)}
+  .pane{padding:18px 16px 70px}
+}
+</style>
+</head>
+<body>
+<header class="top">
+  <div class="brand">
+    <h1>Diagnostic Kreyòl GCF</h1>
+    <div class="sub">Phase 1 — correction manuelle des segments Whisper-ht</div>
+  </div>
+  <div class="meter">
+    <div class="bar"><i id="bar" style="width:0%"></i></div>
+    <span class="num" id="count">0 / 0</span>
+  </div>
+  <button class="btn" id="theme" title="Basculer le thème">Thème</button>
+  <button class="btn primary" id="export">Exporter le CSV</button>
+</header>
+
+<div class="wrap">
+  <nav class="list" id="list" aria-label="Segments">
+    <div class="filters">
+      <button class="chip" data-filter="all" aria-pressed="true">Tous</button>
+      <button class="chip" data-filter="todo" aria-pressed="false">À faire</button>
+      <button class="chip" data-filter="done" aria-pressed="false">Corrigés</button>
+      <button class="chip" data-filter="skip" aria-pressed="false">Ignorés</button>
+    </div>
+    <div id="rows"></div>
+  </nav>
+
+  <main class="pane">
+    <div class="crumb">
+      <span class="seg mono" id="segid">—</span>
+      <span class="tag todo" id="segtag">à faire</span>
+      <span class="save-state" id="saved"></span>
+    </div>
+
+    <div class="player">
+      <button class="play" id="play" aria-label="Lire ou mettre en pause">
+        <svg viewBox="0 0 24 24" id="icon"><path d="M8 5v14l11-7z"></path></svg>
+      </button>
+      <div class="seek">
+        <span class="time" id="cur">0:00</span>
+        <input type="range" id="scrub" min="0" max="1000" value="0" aria-label="Position dans l'extrait">
+        <span class="time" id="dur">0:00</span>
+      </div>
+      <div class="rates">
+        <button class="rate" data-rate="0.6">0,6×</button>
+        <button class="rate" data-rate="0.8">0,8×</button>
+        <button class="rate" data-rate="1" aria-pressed="true">1×</button>
+      </div>
+      <button class="btn" id="again">↺ Réécouter</button>
+    </div>
+
+    <div class="field">
+      <div class="label">Transcription Whisper-ht
+        <span class="hint">référence — les mots surlignés sont ceux que tu as changés</span>
+      </div>
+      <div class="ref kreyol" id="source"></div>
+    </div>
+
+    <div class="field">
+      <div class="label"><label for="edit">Correction gcf</label></div>
+      <textarea id="edit" class="kreyol" spellcheck="false" placeholder="Écris ici la version créole guadeloupéenne correcte…"></textarea>
+      <div class="actions">
+        <button class="btn" id="fill">Partir de la pré-correction</button>
+        <button class="btn" id="copysrc">Copier la source</button>
+        <button class="btn" id="skip">Ignorer ce segment</button>
+        <button class="btn primary" id="next">Valider et suivant</button>
+      </div>
+    </div>
+
+    <div class="field">
+      <div class="label"><label for="notes">Notes</label><span class="hint">les cas ambigus font les meilleures règles</span></div>
+      <input type="text" id="notes" class="notes" placeholder="Hésitation, audio peu clair, choix contextuel…">
+    </div>
+
+    <div class="keys">
+      <span><kbd>Espace</kbd> lire / pause</span>
+      <span><kbd>Ctrl</kbd>+<kbd>Entrée</kbd> valider et suivant</span>
+      <span><kbd>Alt</kbd>+<kbd>↑</kbd> <kbd>↓</kbd> segment précédent / suivant</span>
+      <span><kbd>Ctrl</kbd>+<kbd>Espace</kbd> réécouter</span>
+      <span id="mode"></span>
+    </div>
+  </main>
+</div>
+
+<div class="toast" id="toast" role="status" aria-live="polite"></div>
+
+<script>
+const DATA = [{"id":"diag_0000","idx":"16","ref":"data/diagnostic_audio/audio/0a9b34f4_vocals.mp3_segment_68644_75377.mp3","src":"viè madamn la téni on kaz an pay, dèyè kaz la téni on pié piman chalè a viè fanm la","pre":"viè madamn la téni on kaz an pay, dèyè kaz la téni on pié piman chalè a viè fanm la","audio":"audio/0a9b34f4_vocals.mp3_segment_68644_75377.mp3"},{"id":"diag_0001","idx":"43","ref":"data/diagnostic_audio/audio/415dc2bd_vocals.mp3_segment_916410_919499.mp3","src":"Mezon asi karaje, mezon asa. Le ou vini?","pre":"Mezon asi karajé, mezon asa. Le ou vini?","audio":"audio/415dc2bd_vocals.mp3_segment_916410_919499.mp3"},{"id":"diag_0002","idx":"70","ref":"data/diagnostic_audio/audio/10a82d81_vocals.mp3_segment_781275_787975.mp3","src":"Men nou nou ka sevi èvè èr an nou an tout sans. dayè pou yonn menm fwaz initil la ka di wii nèg paka prononsè èr sa sé kouyonnad.","pre":"Mé nou nou ka sevi èvè èr an nou an tout sans. dayè pou yonn menm fwaz initil la ka di wii nèg paka prononsè èr sa sé kouyonnad.","audio":"audio/10a82d81_vocals.mp3_segment_781275_787975.mp3"},{"id":"diag_0003","idx":"71","ref":"data/diagnostic_audio/audio/c9b84dcd_vocals.mp3_segment_537381_542174.mp3","src":"Sa ka permet mwen an konet saluyè on not fanmam ki ka poté manev Chantal L.","pre":"Sa ka permet an an konet saluyè on not fanmam ki ka poté manev Chantal I.","audio":"audio/c9b84dcd_vocals.mp3_segment_537381_542174.mp3"},{"id":"diag_0004","idx":"14","ref":"data/diagnostic_audio/audio/e4ca4d9a_vocals.mp3_segment_2239410_2242583.mp3","src":"ouais an té vlé aille","pre":"ouais an té vlé aillé","audio":"audio/e4ca4d9a_vocals.mp3_segment_2239410_2242583.mp3"},{"id":"diag_0005","idx":"31","ref":"data/diagnostic_audio/audio/448c719b_vocals.mp3_segment_880467_890710.mp3","src":"Koi chanjé et quante la sa? Grand guel, gros vent, jambes fines. Mais voilà. Jambes en moins fines. C'est ça qui est marqué en les premières phrases-là. Donc, Adam jambes. On y en.","pre":"Koi chanjé et quanté la sa? Grand guel, gros vent, jambes fines. Mais voilà. Jambes en moins fines. C'est ça qui est marqué en les premières phrases-là. Donc, Adam jambes. On y en.","audio":"audio/448c719b_vocals.mp3_segment_880467_890710.mp3"},{"id":"diag_0006","idx":"77","ref":"data/diagnostic_audio/audio/418868cf_vocals.mp3_segment_271296_273574.mp3","src":"Pli adoumanman, cé gaté.","pre":"Pli adoumanman, cé gaté.","audio":"audio/418868cf_vocals.mp3_segment_271296_273574.mp3"},{"id":"diag_0007","idx":"57","ref":"data/diagnostic_audio/audio/442284b4_vocals.mp3","src":"é en mèmntan an komewsan an ka venn, alos an ka trouvéw entre les dé, fo fè komprenn anmenn tan on ti éfow pou nou ékilibré pa rapow à fwi la é kalité à pwoduila","pre":"é en mèmntan an komewsan an ka venn, alos an ka trouvéw entré les dé, fo fè komprenn anmenn tan on ti éfow pou nou ékilibré pa rapow à fwi la é kalité à pwoduila","audio":"audio/442284b4_vocals.mp3"},{"id":"diag_0008","idx":"76","ref":"data/diagnostic_audio/audio/f730f158_vocals.mp3_segment_713742_715885.mp3","src":"é i baléyé douvan pot la ban mwen","pre":"é i baléyé douvan pot la ban an","audio":"audio/f730f158_vocals.mp3_segment_713742_715885.mp3"},{"id":"diag_0009","idx":"68","ref":"data/diagnostic_audio/audio/70907809_vocals.mp3_segment_231674_235892.mp3","src":"I vwé ankadans, misik sidéral","pre":"I vwé ankadans, misik sidéral","audio":"audio/70907809_vocals.mp3_segment_231674_235892.mp3"},{"id":"diag_0010","idx":"60","ref":"data/diagnostic_audio/audio/7620c6fc_vocals.mp3_segment_122847_124855.mp3","src":"La vi té téké pli bèl!","pre":"La vi té téké pli bèl!","audio":"audio/7620c6fc_vocals.mp3_segment_122847_124855.mp3"},{"id":"diag_0011","idx":"33","ref":"data/diagnostic_audio/audio/0a9b34f4_vocals.mp3_segment_65590_68610.mp3","src":"Lari zabim teni an vyé mandam.","pre":"Lari zabim teni an vyé mandam.","audio":"audio/0a9b34f4_vocals.mp3_segment_65590_68610.mp3"},{"id":"diag_0012","idx":"0","ref":"data/diagnostic_audio/audio/3d0602e9_vocals.mp3_segment_573679_576177.mp3","src":"On jenn tirè asi on jenn,","pre":"On jenn tirè asi on jenn,","audio":"audio/3d0602e9_vocals.mp3_segment_573679_576177.mp3"},{"id":"diag_0013","idx":"11","ref":"data/diagnostic_audio/audio/8a9dcb78_vocals.mp3","src":"Sé dé moun ki répond lè la gwadeloup té bizoin yo é yo toujou té sa rété à place à yo mè yo té ka passé à dan on fonction donèw dabô sans avansé é san fè les otes avansé. pas yo ni un pwinsip ki di ou ka najé fo ou kaye o laje","pre":"Sé dé moun ki répond lè la gwadeloup té bizoin yo é yo toujou té sa rété à placé à yo mè yo té ka passé à dan on fonction donèw dabô sans avansé é san fè les otes avansé. pas yo ni un pwinsip ki di ou ka najé fo ou kayé o lajé","audio":"audio/8a9dcb78_vocals.mp3"},{"id":"diag_0014","idx":"15","ref":"data/diagnostic_audio/audio/c4e42530_vocals.mp3","src":"Ou antwé andidan kò a moun-la ou ka pran pis ki on blan, pis ki on fransé, pis ki sa si, pis ki sa la, pis ki tout biten.","pre":"Ou antwé andidan kò a moun-la ou ka pran pis ki on blan, pis ki on fransé, pis ki sa si, pis ki sa la, pis ki tout biten.","audio":"audio/c4e42530_vocals.mp3"},{"id":"diag_0015","idx":"39","ref":"data/diagnostic_audio/audio/e2a666d6_vocals.mp3","src":"Nou an twa chimen karak,lolo a Mikaela ka rezisté, i la dépi 55 lanné","pre":"Nou an twa chimen karak, lolo a Mikaela ka rezisté, i la dépi 55 lanné","audio":"audio/e2a666d6_vocals.mp3"},{"id":"diag_0016","idx":"13","ref":"data/diagnostic_audio/audio/22fc5ae0_vocals.mp3_segment_290449_294887.mp3","src":"An, pa menm biten ki ann, davwa lè ou ka kriyé Lilian ou pa kriyé Liliann.","pre":"An, pa menm biten ki ann, davwa lè ou ka kriyé Lilian ou pa kriyé Liliann.","audio":"audio/22fc5ae0_vocals.mp3_segment_290449_294887.mp3"},{"id":"diag_0017","idx":"80","ref":"data/diagnostic_audio/audio/1462388b_vocals.mp3_segment_40514_42741.mp3","src":"qu'est-ce que le monsieur veut dire? maman, nous allons voler les mandarines de M. Robert, Nous allons voler les mandarines de M. Robert? aïe bon dieu seigneur l'abé\"","pre":"qu'est-ce qué le monsieur veut diré? maman, nous allons voler les mandarines de An. Robert, Nous allons voler les mandarines de An. Robert? aïé bon dieu seigneur l'abé \"","audio":"audio/1462388b_vocals.mp3_segment_40514_42741.mp3"},{"id":"diag_0018","idx":"73","ref":"data/diagnostic_audio/audio/9448e063_vocals.mp3_segment_106782_110460.mp3","src":"Kempé asi mès é labitid!. Kampo.","pre":"Kempé asi mès é labitid!. Kampo.","audio":"audio/9448e063_vocals.mp3_segment_106782_110460.mp3"},{"id":"diag_0019","idx":"56","ref":"data/diagnostic_audio/audio/0776d9f1_vocals.mp3","src":"viande haché an ka mette lasagne au légume exetera et donc an pas aussi","pre":"viandé haché an ka metté lasagné au légumé exetera et donc an pas aussi","audio":"audio/0776d9f1_vocals.mp3"},{"id":"diag_0020","idx":"61","ref":"data/diagnostic_audio/audio/b960f232_vocals.mp3_segment_65337_69319.mp3","src":"Ô! Sonjé mwen!","pre":"Ô! Sonjé an!","audio":"audio/b960f232_vocals.mp3_segment_65337_69319.mp3"},{"id":"diag_0021","idx":"47","ref":"data/diagnostic_audio/audio/c6463dda_vocals.mp3_segment_1514309_1517346.mp3","src":"Ga kon sé ka pa roulé, ga kon sé konsa","pre":"Ga kon sé ka pa roulé, ga kon sé konsa","audio":"audio/c6463dda_vocals.mp3_segment_1514309_1517346.mp3"},{"id":"diag_0022","idx":"34","ref":"data/diagnostic_audio/audio/e55a7ce6_vocals.mp3_segment_3996_7540.mp3","src":"on sel biten ki toujou fè mwen plézi","pre":"on sel biten ki toujou fè an plézi","audio":"audio/e55a7ce6_vocals.mp3_segment_3996_7540.mp3"},{"id":"diag_0023","idx":"62","ref":"data/diagnostic_audio/audio/e55a7ce6_vocals.mp3_segment_164950_170704.mp3","src":"Pa di, pa di, kochon, sé on bèt ki malpwop","pre":"Pa di, pa di, kochon, sé on bèt ki malpwop","audio":"audio/e55a7ce6_vocals.mp3_segment_164950_170704.mp3"},{"id":"diag_0024","idx":"22","ref":"data/diagnostic_audio/audio/a815d665_vocals.mp3_segment_1542912_1545949.mp3","src":"Ou lé moun ka vini fè karnaval à pwésan kon défoulman","pre":"Ou lé moun ka vini fè karnaval à pwésan kon défoulman","audio":"audio/a815d665_vocals.mp3_segment_1542912_1545949.mp3"},{"id":"diag_0025","idx":"81","ref":"data/diagnostic_audio/audio/6f22458e_vocals.mp3_segment_1997625_2007362.mp3","src":"an ka soulé an pay en moin, an pa la pou fè démonstration ba baba, a on moman doné fo arété","pre":"an ka soulé an pay en moin, an pa la pou fè démonstration ba baba, a on moman doné fo arété","audio":"audio/6f22458e_vocals.mp3_segment_1997625_2007362.mp3"},{"id":"diag_0026","idx":"27","ref":"data/diagnostic_audio/audio/8c354db1_vocals.mp3_segment_56629_59076.mp3","src":"Ti campo, i chalviré mwen","pre":"Ti campo, i chalviré an","audio":"audio/8c354db1_vocals.mp3_segment_56629_59076.mp3"},{"id":"diag_0027","idx":"17","ref":"data/diagnostic_audio/audio/c5c201fc_vocals.mp3","src":"Men, ki pwoblèm aw!","pre":"Mé, ki pwoblèm aw!","audio":"audio/c5c201fc_vocals.mp3"},{"id":"diag_0028","idx":"24","ref":"data/diagnostic_audio/audio/09e14773_vocals.mp3","src":"Fò fét tou lé papyé ki fo pou pé asuré padavwa a partir du moman ou tini on véikul an chemin ki pa ni asurans é bin Sé on kabrit ou tini. To ou tar la jandameri pé ramasé a ninpotkimoman","pre":"Fò fét tou lé papyé ki fo pou pé asuré padavwa a partir du moman ou tini on véikul an chemin ki pa ni asurans é bin Sé on kabrit ou tini. To ou tar la jandameri pé ramasé a ninpotkimoman","audio":"audio/09e14773_vocals.mp3"},{"id":"diag_0029","idx":"55","ref":"data/diagnostic_audio/audio/19cfc7e5_vocals.mp3","src":"Paskè soup a Kongo la, sé on migan a tout sa ki ka soti an jadin la.","pre":"Paskè soup a Kongo la, sé on migan a tout sa ki ka soti an jadin la.","audio":"audio/19cfc7e5_vocals.mp3"},{"id":"diag_0030","idx":"26","ref":"data/diagnostic_audio/audio/Hommage_a_Mme_Lucette_MICHAUX_CHEVRY_12_9_2021.mp3_segment_580632_583872.mp3","src":"èvè plis vwa ki té pé ni.","pre":"èvè plis vwa ki té pé ni.","audio":"audio/Hommage_a_Mme_Lucette_MICHAUX_CHEVRY_12_9_2021.mp3_segment_580632_583872.mp3"},{"id":"diag_0031","idx":"51","ref":"data/diagnostic_audio/audio/c9b84dcd_vocals.mp3_segment_30962_37965.mp3","src":"H la sonné Hèp! pas ke sé on H aspiré Hèp! A pa on mo de hèp. Sé pou H la la, pas ke i pa tèbè","pre":"H la sonné Hèp! pas ke sé on H aspiré Hèp! A pa on mo de hèp. Sé pou H la la, pas ke i pa tèbè","audio":"audio/c9b84dcd_vocals.mp3_segment_30962_37965.mp3"},{"id":"diag_0032","idx":"35","ref":"data/diagnostic_audio/audio/0a9b34f4_vocals.mp3_segment_2950_12720.mp3","src":"lari zabim téni on vyè madamn, vyè madamn la téni on kaz an pay, dèyè kaz la téni on pié piman, chalè a viè fanm la","pre":"lari zabim téni on vyè madamn, vyè madamn la téni on kaz an pay, dèyè kaz la téni on pié piman, chalè a viè fanm la","audio":"audio/0a9b34f4_vocals.mp3_segment_2950_12720.mp3"},{"id":"diag_0033","idx":"84","ref":"data/diagnostic_audio/audio/06e8a0ba_vocals.mp3_segment_786608_788684.mp3","src":"yo ki vlé di ke si ou ka gadé","pre":"yo ki vlé di ke si ou ka gadé","audio":"audio/06e8a0ba_vocals.mp3_segment_786608_788684.mp3"},{"id":"diag_0034","idx":"4","ref":"data/diagnostic_audio/audio/9bf65209_vocals.mp3","src":"bon kouraj nou ka kimbé rèd","pre":"bon kouraj nou ka kimbé rèd","audio":"audio/9bf65209_vocals.mp3"},{"id":"diag_0035","idx":"23","ref":"data/diagnostic_audio/audio/37d4132d_vocals.mp3_segment_127707_130592.mp3","src":"Tou sa sé monté dosyé, monté dosyé, gadé ka ou pé fè.","pre":"Tou sa sé monté dosyé, monté dosyé, gadé ka ou pé fè.","audio":"audio/37d4132d_vocals.mp3_segment_127707_130592.mp3"},{"id":"diag_0036","idx":"5","ref":"data/diagnostic_audio/audio/fb62f8c4_vocals.mp3","src":"sé moun ki té complètman aout de sa, rapidman yo entré en diapazon","pre":"sé moun ki té complètman aout de sa, rapidman yo entré en diapazon","audio":"audio/fb62f8c4_vocals.mp3"},{"id":"diag_0037","idx":"38","ref":"data/diagnostic_audio/audio/2abd3949_vocals.mp3_segment_1019736_1024005.mp3","src":"Non, non, non, non, sè tou lé jou, sè tou lé jou, sé tou lé jou.","pre":"Non, non, non, non, sè tou lé jou, sè tou lé jou, sé tou lé jou.","audio":"audio/2abd3949_vocals.mp3_segment_1019736_1024005.mp3"},{"id":"diag_0038","idx":"37","ref":"data/diagnostic_audio/audio/49d18597_vocals.mp3_segment_644402_650106.mp3","src":"Le ou di zyé ou pa méteye o pluriel, o sengilié ou ka di on zyé Le ou di zyé ou pa méteye o plirièl, o sengilié ou ka di on zyé.","pre":"Le ou di zyé ou pa méteyé o pluriel, o sengilié ou ka di on zyé Le ou di zyé ou pa méteyé o plirièl, o sengilié ou ka di on zyé.","audio":"audio/49d18597_vocals.mp3_segment_644402_650106.mp3"},{"id":"diag_0039","idx":"19","ref":"data/diagnostic_audio/audio/Gwoup_50_50_an_repetisyon.mp3_segment_517064_519122.mp3","src":"Sa sé on biten, ki trè enpòtan","pre":"Sa sé on biten, ki trè enpòtan","audio":"audio/Gwoup_50_50_an_repetisyon.mp3_segment_517064_519122.mp3"},{"id":"diag_0040","idx":"50","ref":"data/diagnostic_audio/audio/c9b84dcd_vocals.mp3_segment_852960_856724.mp3","src":"Montè an lè on pyé bwa, pou mwen vwè longè a bwa la","pre":"Montè an lè on pyé bwa, pou an vwè longè a bwa la","audio":"audio/c9b84dcd_vocals.mp3_segment_852960_856724.mp3"},{"id":"diag_0041","idx":"32","ref":"data/diagnostic_audio/audio/c9b84dcd_vocals.mp3_segment_155365_160090.mp3","src":"Le ou komanse rentré adan zekal. Gay on koko sek","pre":"Le ou komansé rentré adan zekal. Gay on koko sek","audio":"audio/c9b84dcd_vocals.mp3_segment_155365_160090.mp3"},{"id":"diag_0042","idx":"10","ref":"data/diagnostic_audio/audio/d6fc3092_vocals.mp3_segment_198885_202277.mp3","src":"ou té ka vin o swè la, o swè la!","pre":"ou té ka vin o swè la, o swè la!","audio":"audio/d6fc3092_vocals.mp3_segment_198885_202277.mp3"},{"id":"diag_0043","idx":"83","ref":"data/diagnostic_audio/audio/9448e063_vocals.mp3_segment_354962_358742.mp3","src":"Ou ja ni abiti la di meni, a par tou selan, kavon lom ou nan gwa lom ki.","pre":"Ou ja ni abiti la di meni, a par tou selan, kavon lom ou adan gwa lom ki.","audio":"audio/9448e063_vocals.mp3_segment_354962_358742.mp3"},{"id":"diag_0044","idx":"20","ref":"data/diagnostic_audio/audio/a4e4f5c3_vocals.mp3_segment_254202_257577.mp3","src":"an té vlé yo krié oh! oh","pre":"an té vlé yo krié oh! oh","audio":"audio/a4e4f5c3_vocals.mp3_segment_254202_257577.mp3"},{"id":"diag_0045","idx":"1","ref":"data/diagnostic_audio/audio/c9b84dcd_vocals.mp3_segment_515241_517502.mp3","src":"woulo, bravo pou é tin bwa dèyè","pre":"woulo, bravo pou é tin bwa dèyè","audio":"audio/c9b84dcd_vocals.mp3_segment_515241_517502.mp3"},{"id":"diag_0046","idx":"25","ref":"data/diagnostic_audio/audio/3d0602e9_vocals.mp3_segment_176999_181116.mp3","src":"Aka woupwan entélektiel asi niyaj.","pre":"Aka woupwan entélektiel asi niyaj.","audio":"audio/3d0602e9_vocals.mp3_segment_176999_181116.mp3"},{"id":"diag_0047","idx":"36","ref":"data/diagnostic_audio/audio/c9b84dcd_vocals.mp3_segment_601675_604037.mp3","src":"O Moul, Bastè é Jari.","pre":"O Moul, Bastè é Jari.","audio":"audio/c9b84dcd_vocals.mp3_segment_601675_604037.mp3"},{"id":"diag_0048","idx":"41","ref":"data/diagnostic_audio/audio/f2926fd0_vocals.mp3_segment_94800_115034.mp3","src":"O, m'si, m'si, m'si, m'si. O, m'anje la. O, m'anje la. Pase, ante ka passe. O, m'anje la. A, vitou ve m'an bo kli zi namre. O, m'anje la. Ma po an ode a vip na. O, m'anje la","pre":"O, m'si, m'si, m'si, m'si. O, m'anjé la. O, m'anjé la. Pasé, anté ka passé. O, m'anjé la. A, vitou ve m'an bo kli zi namré. O, m'anjé la. Ma po an odé a vip na. O, m'anjé la","audio":"audio/f2926fd0_vocals.mp3_segment_94800_115034.mp3"},{"id":"diag_0049","idx":"58","ref":"data/diagnostic_audio/audio/f9a06b6d_vocals.mp3","src":"an mété moin osi et an fè pin pou yo venn et sa kontinué jika présan","pre":"an mété moin osi et an fè pin pou yo venn et sa kontinué jika présan","audio":"audio/f9a06b6d_vocals.mp3"},{"id":"diag_0050","idx":"2","ref":"data/diagnostic_audio/audio/c9b84dcd_vocals.mp3_segment_604037_613977.mp3","src":"mèsi onpil. Bon, Benzo, kan nou kwa fe? Kan nou kwa fe? Bandou sa, porté manè nou en ritat. Nou tout kabakia dan bispo. Jan, Jan, Jan, Jan. Ok.","pre":"mèsi onpil. Bon, Benzo, kan nou kwa fe? Kan nou kwa fe? Bandou sa, porté manè nou en ritat. Nou tout kabakia dan bispo. Jan, Jan, Jan, Jan. Ok.","audio":"audio/c9b84dcd_vocals.mp3_segment_604037_613977.mp3"},{"id":"diag_0051","idx":"69","ref":"data/diagnostic_audio/audio/c9b84dcd_vocals.mp3_segment_533989_536605.mp3","src":"I ka fè parti de la kompani difé kako","pre":"I ka fè parti de la kompani difé kako","audio":"audio/c9b84dcd_vocals.mp3_segment_533989_536605.mp3"},{"id":"diag_0052","idx":"42","ref":"data/diagnostic_audio/audio/d305ac73_vocals.mp3","src":"E ni demoun ki koupe avè sé valè la sa, ki pa janmen te intégré se valè la sa. Donk certen etranjé. Pa tout, men certen étranjé. E adan se certen étranjé a pa tout se étranjé la ki ni menm valè la sa.","pre":"E ni demoun ki koupé èvè sé valè la sa, ki pa janmen té intégré sé valè la sa. Donk certen etranjé. Pa tout, mé certen étranjé. E adan sé certen étranjé a pa tout sé étranjé la ki ni menm valè la sa.","audio":"audio/d305ac73_vocals.mp3"},{"id":"diag_0053","idx":"18","ref":"data/diagnostic_audio/audio/ef6067a2_vocals.mp3_segment_172797_176880.mp3","src":"sa pé ké pi bel pou nou","pre":"sa pé ké pi bel pou nou","audio":"audio/ef6067a2_vocals.mp3_segment_172797_176880.mp3"},{"id":"diag_0054","idx":"85","ref":"data/diagnostic_audio/audio/a815d665_vocals.mp3_segment_1262719_1265048.mp3","src":"Sé mo kafa ki té kréé groupla","pre":"Sé mo kafa ki té kréé groupla","audio":"audio/a815d665_vocals.mp3_segment_1262719_1265048.mp3"},{"id":"diag_0055","idx":"3","ref":"data/diagnostic_audio/audio/RUE_DE_LARTISANAT_VIEUX_HABITANTS.mp3_segment_206918_209382.mp3","src":"yo ké vouè si yo pé dékoré plats aw","pre":"yo ké vouè si yo pé dékoré plats aw","audio":"audio/RUE_DE_LARTISANAT_VIEUX_HABITANTS.mp3_segment_206918_209382.mp3"},{"id":"diag_0056","idx":"74","ref":"data/diagnostic_audio/audio/9448e063_vocals.mp3_segment_462642_466979.mp3","src":"Me kou an di, si se menm mo la ou ma ke evè double ve ou ben eon.","pre":"Me kou an di, si sé menm mo la ou ma ke evè doublé ve ou ben eon.","audio":"audio/9448e063_vocals.mp3_segment_462642_466979.mp3"},{"id":"diag_0057","idx":"65","ref":"data/diagnostic_audio/audio/2abd3949_vocals.mp3_segment_1168979_1171139.mp3","src":"Bien bonjou, bien bonjou, bien bonjou.","pre":"Bien bonjou, bien bonjou, bien bonjou.","audio":"audio/2abd3949_vocals.mp3_segment_1168979_1171139.mp3"},{"id":"diag_0058","idx":"45","ref":"data/diagnostic_audio/audio/415dc2bd_vocals.mp3_segment_1691159_1693504.mp3","src":"Omari mò, madanm la è ti moun la.","pre":"Omari mò, madanm la è ti moun la.","audio":"audio/415dc2bd_vocals.mp3_segment_1691159_1693504.mp3"},{"id":"diag_0059","idx":"78","ref":"data/diagnostic_audio/audio/c7389f31_vocals.mp3_segment_891300_893545.mp3","src":"Quatre du matin a sonner","pre":"Quatré du matin a sonner","audio":"audio/c7389f31_vocals.mp3_segment_891300_893545.mp3"},{"id":"diag_0060","idx":"79","ref":"data/diagnostic_audio/audio/de6411f1_vocals.mp3_segment_1937770_1941162.mp3","src":"ke mwen an mè dèpi 10 an é demi, men nou gwadloupéen fwami an nou.","pre":"ke an an mè dèpi 10 an é demi, mé nou gwadloupéen fwami an nou.","audio":"audio/de6411f1_vocals.mp3_segment_1937770_1941162.mp3"},{"id":"diag_0061","idx":"54","ref":"data/diagnostic_audio/audio/c9b84dcd_vocals.mp3_segment_274317_279885.mp3","src":"pou moun qui té conèt., c'est Maxime C. qui gannyé le tour de la Gwadeloup","pre":"pou moun qui té conèt., c'est Maximé C. qui gannyé le tour de la Gwadeloup","audio":"audio/c9b84dcd_vocals.mp3_segment_274317_279885.mp3"},{"id":"diag_0062","idx":"9","ref":"data/diagnostic_audio/audio/a815d665_vocals.mp3_segment_769244_780128.mp3","src":"Fote ma ke mas a Saint-Jean. E mwen an komanse ka ma ke tout douceman, reminisan san mwen, souvenir danfan san mwen. E pi, anjou, an pran la desisyon","pre":"Foté ma ke mas a Saint-Jean. E an an komansé ka ma ke tout douceman, reminisan san an, souvenir danfan san an. E pi, anjou, an pran la desisyon","audio":"audio/a815d665_vocals.mp3_segment_769244_780128.mp3"},{"id":"diag_0063","idx":"52","ref":"data/diagnostic_audio/audio/c9b84dcd_vocals.mp3_segment_598266_601405.mp3","src":"E nou tini, bien entendu, Libri Général.","pre":"E nou tini, bien entendu, Libri Général.","audio":"audio/c9b84dcd_vocals.mp3_segment_598266_601405.mp3"},{"id":"diag_0064","idx":"59","ref":"data/diagnostic_audio/audio/2abd3949_vocals.mp3_segment_728237_734160.mp3","src":"É an ka di'ou sé moun la trè, trè kontan, men ni sa kika pléré lè yo vwè.","pre":"É an ka di'ou sé moun la trè, trè kontan, mé ni sa kika pléré lè yo vwè.","audio":"audio/2abd3949_vocals.mp3_segment_728237_734160.mp3"},{"id":"diag_0065","idx":"28","ref":"data/diagnostic_audio/audio/45d21370_vocals.mp3_segment_691889_715024.mp3","src":"Mwen, joka lese dott moun ganyi. Se kon moun lapre? Moun lapot ganyi dèfwa. La yopar, yopar dan kon. Moun zabi, se dèzem la. Se misye lo amon ki te ganyi en triko, en waseo y triko. Mwen la, misye a desabi e mwen a se plateau la. Ebe se yon te ganyi tiko la. La seman passe bou ka re te zabi. Men be, abimien, jokalese dott moun ganyi. Mwen si an pil.","pre":"An, joka lesé dott moun ganyi. Sé kon moun lapré? Moun lapot ganyi dèfwa. La yopar, yopar dan kon. Moun zabi, sé dèzem la. Sé misyé lo amon ki té ganyi en triko, en waseo y triko. An la, misyé a desabi é an a sé plateau la. Ebé sé yon té ganyi tiko la. La seman passé bou ka re té zabi. Mé be, abimien, jokalesé dott moun ganyi. An si an pil.","audio":"audio/45d21370_vocals.mp3_segment_691889_715024.mp3"},{"id":"diag_0066","idx":"82","ref":"data/diagnostic_audio/audio/c9b84dcd_vocals.mp3_segment_331827_335219.mp3","src":"An komansé komandé avè négoss, é.","pre":"An komansé komandé èvè négoss, é.","audio":"audio/c9b84dcd_vocals.mp3_segment_331827_335219.mp3"},{"id":"diag_0067","idx":"48","ref":"data/diagnostic_audio/audio/8b338c3d_vocals.mp3_segment_312606_315964.mp3","src":"é mé ki moun ou yé mèm, ban nou, ban nou on nouvèl, baw","pre":"é mé ki moun ou yé mèm, ban nou, ban nou on nouvèl, baw","audio":"audio/8b338c3d_vocals.mp3_segment_312606_315964.mp3"},{"id":"diag_0068","idx":"66","ref":"data/diagnostic_audio/audio/e55a7ce6_vocals.mp3_segment_239807_242760.mp3","src":"An téni, on gwo rat","pre":"An téni, on gwo rat","audio":"audio/e55a7ce6_vocals.mp3_segment_239807_242760.mp3"},{"id":"diag_0069","idx":"40","ref":"data/diagnostic_audio/audio/77f6a780_vocals.mp3_segment_640960_643390.mp3","src":"Deschanel fait, on pil","pre":"Deschanel fait, on pil","audio":"audio/77f6a780_vocals.mp3_segment_640960_643390.mp3"},{"id":"diag_0070","idx":"53","ref":"data/diagnostic_audio/audio/332a4e2f_vocals.mp3_segment_273726_279194.mp3","src":"Benzo bien bonswa. Bien bonnswa. Aka pasew la parol. *","pre":"Benzo bien bonswa. Bien bonnswa. Aka pasew la parol. *","audio":"audio/332a4e2f_vocals.mp3_segment_273726_279194.mp3"},{"id":"diag_0071","idx":"64","ref":"data/diagnostic_audio/audio/69c479d9_vocals.mp3_segment_163870_171194.mp3","src":"gran grèc a gramè kakrièsa lagliyaj ki vlé di an fransé \"agglutination.\"","pre":"gran grèc a gramè kakrièsa lagliyaj ki vlé di an fransé \" agglutination. \"","audio":"audio/69c479d9_vocals.mp3_segment_163870_171194.mp3"},{"id":"diag_0072","idx":"12","ref":"data/diagnostic_audio/audio/fbefc47b_vocals.mp3_segment_271971_278586.mp3","src":"Ou ja palé ban mwen tròp ou ja fè mwen konprann nou pé fè on lo biten ansam","pre":"Ou ja palé ban an tròp ou ja fè an konprann nou pé fè on lo biten ansam","audio":"audio/fbefc47b_vocals.mp3_segment_271971_278586.mp3"},{"id":"diag_0073","idx":"75","ref":"data/diagnostic_audio/audio/2abd3949_vocals.mp3_segment_493287_495599.mp3","src":"Ok, mèsi. Ok, bon kouraj.","pre":"Ok, mèsi. Ok, bon kouraj.","audio":"audio/2abd3949_vocals.mp3_segment_493287_495599.mp3"},{"id":"diag_0074","idx":"49","ref":"data/diagnostic_audio/audio/0a9b34f4_vocals.mp3_segment_13514_18154.mp3","src":"Tchoué pié piman la chè. La la la la la la la","pre":"Tchoué pié piman la chè. La la la la la la la","audio":"audio/0a9b34f4_vocals.mp3_segment_13514_18154.mp3"},{"id":"diag_0075","idx":"8","ref":"data/diagnostic_audio/audio/22fc5ae0_vocals.mp3_segment_165_3507.mp3","src":"monté adan on pyé bwa, pou mwen vwé longè a bwa la","pre":"monté adan on pyé bwa, pou an vwé longè a bwa la","audio":"audio/22fc5ae0_vocals.mp3_segment_165_3507.mp3"},{"id":"diag_0076","idx":"72","ref":"data/diagnostic_audio/audio/a815d665_vocals.mp3_segment_274840_278974.mp3","src":"Mwen konèt ou frèch ou bel kon zépina ki pousè an kaka","pre":"An konèt ou frèch ou bel kon zépina ki pousè an kaka","audio":"audio/a815d665_vocals.mp3_segment_274840_278974.mp3"},{"id":"diag_0077","idx":"44","ref":"data/diagnostic_audio/audio/8ddd593c_vocals.mp3_segment_631510_638294.mp3","src":"Alò, toujou adan, i adan tex la pa enkiété zòt biten. E gadé bien, an makè biten ni kat son.","pre":"Alò, toujou adan, i adan tex la pa enkiété zòt biten. E gadé bien, an makè biten ni kat son.","audio":"audio/8ddd593c_vocals.mp3_segment_631510_638294.mp3"},{"id":"diag_0078","idx":"6","ref":"data/diagnostic_audio/audio/8c4444a1_vocals.mp3_segment_104200_107237.mp3","src":"mwen lévé et tout moun té ka palé kréyòl","pre":"an lévé et tout moun té ka palé kréyòl","audio":"audio/8c4444a1_vocals.mp3_segment_104200_107237.mp3"},{"id":"diag_0079","idx":"29","ref":"data/diagnostic_audio/audio/88e7be88_vocals.mp3","src":"A pa kantité manjé la nou ka manjé a pa rempli yon zasiette avè di riz pwa rouge avè dombre","pre":"A pa kantité manjé la nou ka manjé a pa rempli yon zasietté èvè di riz pwa rougé èvè dombré","audio":"audio/88e7be88_vocals.mp3"}];
+const KEY = "gcf-diag-v1";
+/* window.claude n'existe que dans le visualiseur : la page doit tenir sans lui. */
+async function useCap(name){
+  try{ if(typeof claude === "undefined" || !claude.use) return null; return await claude.use(name); }
+  catch(e){ return null; }
+}
+
+/* ---------- état ---------- */
+let state = DATA.map(d => ({id:d.id, corrected:"", notes:"", skipped:false}));
+let active = 0, filter = "all", publishTimer = null, artifactNs = null;
+
+function load(){
+  let local = null;
+  try{ const raw = localStorage.getItem(KEY); if(raw) local = JSON.parse(raw); }catch(e){}
+  if(local && Array.isArray(local.rows)) merge(local.rows);
+}
+function merge(rows){
+  const by = new Map(rows.map(r => [r.id, r]));
+  state.forEach(s => { const r = by.get(s.id); if(r){ s.corrected = r.corrected||""; s.notes = r.notes||""; s.skipped = !!r.skipped; } });
+}
+function persist(){
+  try{ localStorage.setItem(KEY, JSON.stringify({at:Date.now(), rows:state})); }catch(e){}
+  schedulePublish();
+}
+
+/* ---------- sauvegarde durable dans la page ---------- */
+async function schedulePublish(){
+  if(!artifactNs) return;
+  clearTimeout(publishTimer);
+  publishTimer = setTimeout(async () => {
+    try{
+      await artifactNs.publish({"data/corrections.json": JSON.stringify({at:Date.now(), rows:state})});
+      note("Sauvegardé dans la page");
+    }catch(err){
+      if(err && err.code === "conflict") return;
+      if(err && (err.code === "not_writer" || err.code === "not_granted" || err.code === "capability_disabled" || err.code === "not_declared")){
+        artifactNs = null;
+        note("Sauvegarde dans la page indisponible ici — pense à exporter le CSV");
+      }
+    }
+  }, 4000);
+}
+
+/* ---------- statut ---------- */
+function stateOf(i){
+  const s = state[i];
+  if(s.skipped) return "skip";
+  if(s.corrected.trim()) return "done";
+  return "todo";
+}
+const LABEL = {todo:"à faire", done:"corrigé", skip:"ignoré", draft:"en cours"};
+
+/* ---------- rendu de la liste ---------- */
+const rowsEl = document.getElementById("rows");
+function renderList(){
+  const frag = document.createDocumentFragment();
+  DATA.forEach((d,i) => {
+    const st = stateOf(i);
+    if(filter !== "all" && filter !== st) return;
+    const b = document.createElement("button");
+    b.className = "row"; b.dataset.state = st; b.dataset.i = i;
+    b.setAttribute("aria-current", i === active ? "true" : "false");
+    const dot = document.createElement("span"); dot.className = "dot";
+    const box = document.createElement("span");
+    const id = document.createElement("span"); id.className = "id mono"; id.textContent = d.id;
+    const tx = document.createElement("span"); tx.className = "txt kreyol";
+    tx.textContent = state[i].corrected.trim() || d.src;
+    box.appendChild(id); box.appendChild(document.createElement("br")); box.appendChild(tx);
+    b.appendChild(dot); b.appendChild(box);
+    frag.appendChild(b);
+  });
+  rowsEl.replaceChildren(frag);
+}
+rowsEl.addEventListener("click", e => {
+  const b = e.target.closest(".row"); if(!b) return;
+  go(Number(b.dataset.i));
+});
+document.querySelectorAll(".chip").forEach(c => c.addEventListener("click", () => {
+  document.querySelectorAll(".chip").forEach(x => x.setAttribute("aria-pressed","false"));
+  c.setAttribute("aria-pressed","true"); filter = c.dataset.filter; renderList();
+}));
+
+/* ---------- diff mot à mot ---------- */
+function words(t){ return (t||"").trim().split(/\s+/).filter(Boolean); }
+function diffMark(srcText, curText){
+  const a = words(srcText), b = words(curText);
+  if(!b.length) return srcText;
+  const n = a.length, m = b.length;
+  const dp = Array.from({length:n+1}, () => new Uint16Array(m+1));
+  for(let i=n-1;i>=0;i--) for(let j=m-1;j>=0;j--)
+    dp[i][j] = a[i].toLowerCase() === b[j].toLowerCase() ? dp[i+1][j+1]+1 : Math.max(dp[i+1][j], dp[i][j+1]);
+  const out = []; let i=0, j=0;
+  while(i<n && j<m){
+    if(a[i].toLowerCase() === b[j].toLowerCase()){ out.push({w:a[i], same:true}); i++; j++; }
+    else if(dp[i+1][j] >= dp[i][j+1]){ out.push({w:a[i], same:false}); i++; }
+    else j++;
+  }
+  while(i<n){ out.push({w:a[i], same:false}); i++; }
+  const frag = document.createDocumentFragment();
+  out.forEach((o,k) => {
+    const node = o.same ? document.createTextNode(o.w) : Object.assign(document.createElement("mark"), {textContent:o.w});
+    frag.appendChild(node);
+    if(k < out.length-1) frag.appendChild(document.createTextNode(" "));
+  });
+  return frag;
+}
+
+/* ---------- panneau ---------- */
+const audio = new Audio();
+const el = id => document.getElementById(id);
+function go(i){
+  if(i < 0 || i >= DATA.length) return;
+  active = i;
+  const d = DATA[i], s = state[i];
+  el("segid").textContent = d.id + " · " + (i+1) + "/" + DATA.length;
+  el("edit").value = s.corrected;
+  el("notes").value = s.notes;
+  audio.pause(); audio.src = d.audio; audio.currentTime = 0; setIcon(false);
+  el("cur").textContent = "0:00"; el("dur").textContent = "0:00"; el("scrub").value = 0;
+  paint();
+  renderList();
+  const cur = rowsEl.querySelector('[aria-current="true"]');
+  if(cur) cur.scrollIntoView({block:"nearest"});
+}
+function paint(){
+  const d = DATA[active], s = state[active], st = stateOf(active);
+  const src = el("source");
+  const marked = diffMark(d.src, s.corrected);
+  if(typeof marked === "string") src.textContent = marked; else src.replaceChildren(marked);
+  const tag = el("segtag"); tag.className = "tag " + st; tag.textContent = LABEL[st];
+  const done = state.filter((x,i) => stateOf(i) !== "todo").length;
+  el("count").textContent = done + " / " + DATA.length;
+  el("bar").style.width = (100*done/DATA.length).toFixed(1) + "%";
+}
+function note(msg){
+  const t = el("toast"); t.textContent = msg; t.classList.add("on");
+  clearTimeout(note._t); note._t = setTimeout(() => t.classList.remove("on"), 2200);
+}
+
+/* ---------- édition ---------- */
+let paintTimer = null;
+el("edit").addEventListener("input", e => {
+  state[active].corrected = e.target.value;
+  if(e.target.value.trim()) state[active].skipped = false;
+  persist();
+  clearTimeout(paintTimer); paintTimer = setTimeout(() => { paint(); renderList(); }, 220);
+  el("saved").textContent = "brouillon enregistré";
+});
+el("notes").addEventListener("input", e => { state[active].notes = e.target.value; persist(); });
+el("fill").addEventListener("click", () => {
+  el("edit").value = DATA[active].pre; state[active].corrected = DATA[active].pre;
+  state[active].skipped = false; persist(); paint(); renderList(); el("edit").focus();
+});
+el("copysrc").addEventListener("click", () => {
+  el("edit").value = DATA[active].src; state[active].corrected = DATA[active].src;
+  state[active].skipped = false; persist(); paint(); renderList(); el("edit").focus();
+});
+el("skip").addEventListener("click", () => {
+  state[active].skipped = true; state[active].corrected = ""; el("edit").value = "";
+  persist(); paint(); renderList(); note("Segment ignoré — il ne partira pas dans `mine`");
+});
+el("next").addEventListener("click", () => nextTodo());
+function nextTodo(){
+  for(let k=1;k<=DATA.length;k++){
+    const i = (active+k) % DATA.length;
+    if(stateOf(i) === "todo"){ go(i); el("edit").focus(); return; }
+  }
+  go(Math.min(active+1, DATA.length-1));
+  note("Plus rien à faire — pense à exporter le CSV");
+}
+
+/* ---------- lecture ---------- */
+function setIcon(playing){
+  el("icon").innerHTML = playing ? '<path d="M6 5h4v14H6zM14 5h4v14h-4z"></path>' : '<path d="M8 5v14l11-7z"></path>';
+}
+function fmt(t){ if(!isFinite(t)) return "0:00"; const m = Math.floor(t/60), s = Math.floor(t%60); return m + ":" + String(s).padStart(2,"0"); }
+el("play").addEventListener("click", toggle);
+function toggle(){ if(audio.paused){ audio.play().catch(()=>{}); } else audio.pause(); }
+audio.addEventListener("play", () => setIcon(true));
+audio.addEventListener("pause", () => setIcon(false));
+audio.addEventListener("ended", () => setIcon(false));
+audio.addEventListener("loadedmetadata", () => el("dur").textContent = fmt(audio.duration));
+audio.addEventListener("timeupdate", () => {
+  el("cur").textContent = fmt(audio.currentTime);
+  if(audio.duration) el("scrub").value = Math.round(1000*audio.currentTime/audio.duration);
+});
+el("scrub").addEventListener("input", e => { if(audio.duration) audio.currentTime = audio.duration * e.target.value/1000; });
+el("again").addEventListener("click", () => { audio.currentTime = 0; audio.play().catch(()=>{}); });
+document.querySelectorAll(".rate").forEach(r => r.addEventListener("click", () => {
+  document.querySelectorAll(".rate").forEach(x => x.setAttribute("aria-pressed","false"));
+  r.setAttribute("aria-pressed","true"); audio.playbackRate = Number(r.dataset.rate);
+}));
+
+/* ---------- clavier ---------- */
+document.addEventListener("keydown", e => {
+  const typing = /^(INPUT|TEXTAREA)$/.test(document.activeElement.tagName);
+  if(e.code === "Space" && e.ctrlKey){ e.preventDefault(); audio.currentTime = 0; audio.play().catch(()=>{}); return; }
+  if(e.code === "Space" && !typing){ e.preventDefault(); toggle(); return; }
+  if(e.key === "Enter" && (e.ctrlKey || e.metaKey)){ e.preventDefault(); nextTodo(); return; }
+  if(e.altKey && e.key === "ArrowDown"){ e.preventDefault(); go(Math.min(active+1, DATA.length-1)); }
+  if(e.altKey && e.key === "ArrowUp"){ e.preventDefault(); go(Math.max(active-1, 0)); }
+});
+
+/* ---------- export ---------- */
+function csvCell(v){ v = (v==null?"":String(v)); return /[",\n\r]/.test(v) ? '"' + v.replace(/"/g,'""') + '"' : v; }
+function buildCsv(){
+  const head = ["segment_id","dataset_index","audio_ref","whisper_ht","pre_correction","corrected","notes"];
+  const lines = [head.join(",")];
+  DATA.forEach((d,i) => lines.push([d.id, d.idx, d.ref, d.src, d.pre, state[i].corrected, state[i].notes].map(csvCell).join(",")));
+  return lines.join("\r\n") + "\r\n";
+}
+el("export").addEventListener("click", async () => {
+  const csv = buildCsv();
+  const name = "diagnostic_corrected.csv";
+
+  const dl = await useCap("downloads");
+  if(dl){
+    try{
+      await dl.save({filename:name, data:csv});
+      note("CSV enregistré — place-le dans data/ puis lance `mine`");
+      return;
+    }catch(err){
+      if(err && err.code === "declined") return;
+    }
+  }
+  // Navigateur ordinaire (GitHub Pages, fichier local) : téléchargement direct.
+  try{
+    const url = URL.createObjectURL(new Blob([csv], {type:"text/csv;charset=utf-8"}));
+    const a = document.createElement("a");
+    a.href = url; a.download = name; document.body.appendChild(a); a.click();
+    a.remove(); setTimeout(() => URL.revokeObjectURL(url), 1000);
+    note("CSV téléchargé — place-le dans data/ puis lance `mine`");
+    return;
+  }catch(e){}
+  try{ await navigator.clipboard.writeText(csv); note("Téléchargement bloqué — CSV copié dans le presse-papier"); }
+  catch(e){ note("Impossible d'exporter depuis cette vue"); }
+});
+
+/* ---------- thème ---------- */
+el("theme").addEventListener("click", () => {
+  const cur = document.documentElement.getAttribute("data-theme");
+  const dark = cur ? cur === "dark" : matchMedia("(prefers-color-scheme:dark)").matches;
+  document.documentElement.setAttribute("data-theme", dark ? "light" : "dark");
+});
+
+/* ---------- démarrage ---------- */
+load();
+renderList();
+go(0);
+
+(async () => {
+  const ns = await useCap("artifact");
+  if(!ns){
+    document.getElementById("mode").textContent =
+      "Sauvegarde locale à ce navigateur — exporte le CSV régulièrement.";
+    return;
+  }
+  document.getElementById("mode").textContent =
+    "Avancement sauvegardé dans la page, récupérable depuis un autre appareil.";
+  artifactNs = ns;
+  try{
+    const res = await fetch("data/corrections.json", {cache:"no-store"});
+    if(res.ok){
+      const saved = await res.json();
+      let localAt = 0;
+      try{ localAt = (JSON.parse(localStorage.getItem(KEY)||"{}").at)||0; }catch(e){}
+      if(saved && Array.isArray(saved.rows) && (saved.at||0) > localAt){
+        merge(saved.rows); renderList(); go(active);
+        note("Avancement repris depuis la page");
+      }
+    }
+  }catch(e){}
+})();
+</script>
+</body>
+</html>
