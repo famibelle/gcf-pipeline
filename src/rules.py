@@ -188,6 +188,8 @@ class Rule:
 class RuleSet:
     """Ensemble ordonné de règles, applicable dans les deux sens."""
 
+    _warned_inverse_regex = False
+
     def __init__(self, rules: Iterable[Rule] | None = None, meta: dict | None = None):
         self.rules: list[Rule] = list(rules or [])
         self.meta: dict = meta or {}
@@ -269,10 +271,21 @@ class RuleSet:
                 out.append(tokens[i])
                 i += 1
         result = " ".join(out)
-        for r in self._regex:
-            pat, rep = (r.src, r.tgt) if forward else (r.tgt, r.src)
-            if prob >= 1.0 or rng.random() <= prob:
-                result = re.sub(pat, rep, result)
+        # Les règles regex ne s'appliquent qu'en sens direct. Une substitution
+        # regex est en général non inversible : `(\w{2,})e\b -> \1é` n'a pas
+        # d'inverse bien défini, et permuter motif et remplacement produit soit
+        # une erreur (`bad escape \s`), soit une réécriture silencieusement
+        # fausse. La corruption e/é du sens inverse est couverte par le bruit
+        # de `phase2_synthetic.add_asr_noise` (chute d'accents).
+        if forward:
+            for r in self._regex:
+                if prob >= 1.0 or rng.random() <= prob:
+                    result = re.sub(r.src, r.tgt, result)
+        elif self._regex and not RuleSet._warned_inverse_regex:
+            RuleSet._warned_inverse_regex = True
+            from .io_utils import log
+            log.warning("%d règle(s) regex ignorée(s) en sens inverse (non inversibles).",
+                        len(self._regex))
         return normalize_surface(_fix_spacing(result))
 
     @staticmethod

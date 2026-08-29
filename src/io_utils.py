@@ -28,12 +28,17 @@ def detect_text_column(dataset, explicit: str | None = None) -> str:
         if explicit not in cols:
             raise KeyError(f"Colonne '{explicit}' absente. Disponibles : {cols}")
         return explicit
+    # Comparaison insensible à la casse : PawolKreyol expose `Texte`, pas `texte`.
+    lower = {c.lower(): c for c in cols}
     for cand in TEXT_COLUMN_CANDIDATES:
-        if cand in cols:
-            return cand
-    # dernier recours : première colonne de type string non-audio
+        if cand in lower:
+            return lower[cand]
+    # dernier recours : première colonne non-audio. Silencieux et souvent faux
+    # (une colonne `Source` d'attribution passerait pour du texte), donc signalé.
     for c in cols:
-        if c not in AUDIO_COLUMN_CANDIDATES:
+        if c.lower() not in AUDIO_COLUMN_CANDIDATES:
+            log.warning("Aucun nom de colonne texte reconnu parmi %s : repli sur '%s'. "
+                        "Fixer asr_text_column/text_column dans la config si c'est faux.", cols, c)
             return c
     raise KeyError(f"Aucune colonne texte détectée parmi {cols}")
 
