@@ -82,6 +82,54 @@ def load_done(out: Path) -> dict[str, str]:
     return done
 
 
+def hf_list(dataset: str, revision: str) -> list[str]:
+    """Clés audio du dépôt, en un seul appel d'API."""
+    from huggingface_hub import HfApi
+
+    files = HfApi().list_repo_files(dataset, repo_type="dataset", revision=revision)
+    return sorted(f for f in files if Path(f).suffix.lower() in AUDIO_SUFFIXES)
+
+
+def hf_prefetch(dataset: str, revision: str, keys: list[str], ahead: int,
+                dest: Path, keep: bool):
+    """Rend (clé, chemin local) en téléchargeant quelques fichiers d'avance.
+
+    Le téléchargement est ainsi cadencé par la transcription, neuf fois plus
+    lente que lui. Deux bénéfices : il disparaît derrière le calcul, et la
+    cadence tombe très en dessous du quota de l'API — récupérer les 40 000
+    fichiers à pleine vitesse déclenche un HTTP 429 en quelques secondes.
+    """
+    import queue
+    import threading
+
+    from huggingface_hub import hf_hub_download
+
+    os.environ.setdefault("HF_HUB_DISABLE_XET", "1")
+    q: queue.Queue = queue.Queue(maxsize=ahead)
+    STOP = object()
+
+    def worker():
+        for k in keys:
+            try:
+                path = hf_hub_download(dataset, k, repo_type="dataset",
+                                       revision=revision, local_dir=str(dest))
+                q.put((k, Path(path), None))
+            except Exception as exc:  # noqa: BLE001
+                q.put((k, None, f"{type(exc).__name__}: {exc}"))
+        q.put(STOP)
+
+    t = threading.Thread(target=worker, daemon=True)
+    t.start()
+    while True:
+        item = q.get()
+        if item is STOP:
+            return
+        key, path, err = item
+        yield key, path, err
+        if path and not keep:
+            path.unlink(missing_ok=True)
+
+
 def human(seconds: float) -> str:
     seconds = int(seconds)
     h, m = divmod(seconds // 60, 60)
@@ -90,7 +138,16 @@ def human(seconds: float) -> str:
 
 def main() -> int:
     p = argparse.ArgumentParser(description="Passe Whisper sur le corpus audio")
-    p.add_argument("--root", required=True, help="racine contenant part01/, part02/, audio/…")
+    p.add_argument("--root", default=None, help="racine locale contenant part01/, part02/, audio/…")
+    p.add_argument("--hf", default=None, metavar="DATASET",
+                   help="transcrire depuis un dataset Hugging Face au lieu d'un dossier "
+                        "local : les audios sont récupérés au rythme de la transcription")
+    p.add_argument("--hf-revision", default="main")
+    p.add_argument("--ahead", type=int, default=48,
+                   help="nombre de fichiers téléchargés d'avance")
+    p.add_argument("--keep-audio", action="store_true",
+                   help="conserver les mp3 récupérés (par défaut ils sont supprimés "
+                        "après transcription)")
     p.add_argument("--out", default=None, help="jsonl de sortie (défaut : <root>/metadata.whisper.jsonl)")
     p.add_argument("--dirs", nargs="*", default=None, help="restreindre à ces sous-dossiers")
     p.add_argument("--model", default="large-v3")
@@ -112,15 +169,29 @@ def main() -> int:
                         "(typiquement le metadata.jsonl actuel du dépôt)")
     args = p.parse_args()
 
-    root = Path(args.root).expanduser().resolve()
-    if not root.is_dir():
-        print(f"Racine introuvable : {root}", file=sys.stderr)
+    if bool(args.root) == bool(args.hf):
+        print("Choisir exactement une source : --root ou --hf.", file=sys.stderr)
         return 2
-    out = Path(args.out).expanduser() if args.out else root / "metadata.whisper.jsonl"
 
-    files = discover(root, args.dirs)
-    if not files:
-        print(f"Aucun audio trouvé sous {root}", file=sys.stderr)
+    if args.hf:
+        root = None
+        out = Path(args.out).expanduser() if args.out else Path("metadata.whisper.jsonl")
+        print(f"source        : {args.hf} ({args.hf_revision})")
+        keys = hf_list(args.hf, args.hf_revision)
+        if args.dirs:
+            keys = [k for k in keys if k.split("/")[0] in args.dirs]
+    else:
+        root = Path(args.root).expanduser().resolve()
+        if not root.is_dir():
+            print(f"Racine introuvable : {root}", file=sys.stderr)
+            return 2
+        out = Path(args.out).expanduser() if args.out else root / "metadata.whisper.jsonl"
+        files = discover(root, args.dirs)
+        keys = [key_of(f, root) for f in files]
+        by_key = {key_of(f, root): f for f in files}
+
+    if not keys:
+        print("Aucun audio trouvé.", file=sys.stderr)
         return 2
 
     done = {} if args.redo else load_done(out)
@@ -150,13 +221,14 @@ def main() -> int:
     if args.retry_empty:
         # Les lignes préservées restent hors du champ : elles ne sont pas vides.
         done = {k: v for k, v in done.items() if v.strip()}
-    todo = [f for f in files if key_of(f, root) not in done]
+    todo = [k for k in keys if k not in done]
     if args.limit:
         todo = todo[: args.limit]
 
-    print(f"racine        : {root}")
+    if root:
+        print(f"racine        : {root}")
     print(f"sortie        : {out}")
-    print(f"audios trouvés: {len(files):,}")
+    print(f"audios trouvés: {len(keys):,}")
     print(f"déjà faits    : {len(done):,}")
     if preserved:
         print(f"  dont préservés : {preserved:,} (jamais recalculés)")
@@ -177,10 +249,18 @@ def main() -> int:
     audio_seconds = 0.0
     started = time.time()
     # Ouverture en ajout : la reprise ne réécrit jamais ce qui existe.
+    if args.hf:
+        cache = Path(args.out).parent / "_audio" if args.out else Path("_audio")
+        source = hf_prefetch(args.hf, args.hf_revision, todo, args.ahead,
+                             cache, args.keep_audio)
+    else:
+        source = ((k, by_key[k], None) for k in todo)
+
     with out.open("a", encoding="utf-8") as fh:
-        for i, path in enumerate(todo, 1):
-            name = key_of(path, root)
+        for i, (name, path, dl_error) in enumerate(source, 1):
             try:
+                if dl_error:
+                    raise RuntimeError(dl_error)
                 segments, info = model.transcribe(
                     str(path),
                     language=args.language,
@@ -239,7 +319,7 @@ def main() -> int:
     if audio_seconds:
         print(f"audio traité  : {human(audio_seconds)}")
         print(f"vitesse       : {audio_seconds / elapsed:.1f}× le temps réel")
-        reste = len(files) - len(done) - len(todo)
+        reste = len([k for k in keys if k not in done]) - len(todo)
         if reste > 0:
             par_fichier = elapsed / max(ok + failed, 1)
             print(f"→ estimation pour les {reste:,} restants : {human(reste * par_fichier)}")
