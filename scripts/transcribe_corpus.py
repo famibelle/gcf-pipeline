@@ -32,11 +32,72 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import re
 import sys
 import time
+import unicodedata
 from pathlib import Path
 
 AUDIO_SUFFIXES = {".mp3", ".wav", ".m4a", ".flac", ".ogg"}
+
+# --- filtrage du brouillon ------------------------------------------------
+# Whisper produit deux sortes de texte inutilisable ici. Sur du silence ou du
+# bruit, il invente des génériques de sous-titrage. Sur de la parole créole, il
+# bascule parfois en français, d'autant plus volontiers que le segment est long
+# et lui donne de quoi construire une phrase fluide.
+#
+# Les deux valent moins que rien : une ligne vide dit à l'annotateur « à
+# transcrire », là où une phrase française lui impose de tout effacer d'abord.
+HALLUCINATIONS = [
+    r"sous[- ]titr", r"amara\.org", r"abonnez[- ]vous", r"merci d'avoir regard",
+    r"^\s*merci\s*\.?\s*$", r"c'est la fin de la vid", r"like et abonne",
+    r"^\s*musique\s*\.?\s*$", r"^\s*\.{2,}\s*$", r"transcription par",
+]
+_HALLU = [re.compile(p, re.IGNORECASE) for p in HALLUCINATIONS]
+
+# Mots-outils plutôt que lexique complet : ils portent la structure de la phrase
+# et discriminent mieux, l'orthographe de Whisper étant instable. Un ratio sur le
+# dictionnaire gwadloupéen rejetait 42 % des lignes, dont beaucoup de créole
+# légitime — Whisper écrit en orthographe haïtienne, qui n'y correspond pas.
+MOTS_KREYOL = {
+    "ka", "an", "sé", "se", "on", "té", "te", "yo", "pa", "ou", "ki", "pou",
+    "adan", "kon", "sa", "vou", "moun", "fè", "ni", "la", "mwen", "nou", "ay",
+    "dèyè", "asi", "zot", "i", "ba", "kè", "ké", "apa", "poko", "toujou", "yon",
+    "nan", "li", "gen",
+}
+MOTS_FRANCAIS = {
+    "est", "les", "que", "pour", "dans", "je", "vous", "nous", "avec", "mais",
+    "plus", "cette", "comme", "tout", "être", "sont", "fait", "bien", "peut",
+    "même", "très", "leur", "elle", "des", "une", "aux", "par", "sur", "son",
+    "ses", "qui", "au", "du", "il", "ce", "donc", "alors", "parce", "toujours",
+    "aussi", "chose", "faire",
+}
+_MOT = re.compile(r"[a-zàâäéèêëîïôöùûüçòñ']+")
+
+
+def _sans_accents(mot: str) -> str:
+    return "".join(c for c in unicodedata.normalize("NFD", mot)
+                   if unicodedata.category(c) != "Mn")
+
+
+_KREYOL_NU = {_sans_accents(m) for m in MOTS_KREYOL}
+
+
+def juger(texte: str) -> tuple[bool, str]:
+    """(garder, motif de rejet). Le doute profite au texte : l'annotateur
+    peut effacer une ligne douteuse, il ne peut pas deviner une ligne perdue."""
+    t = texte.strip()
+    if not t:
+        return True, ""
+    for r in _HALLU:
+        if r.search(t):
+            return False, "hallucination"
+    mots = _MOT.findall(t.lower())
+    if len(mots) < 3:
+        return True, ""
+    k = sum(1 for m in mots if m in MOTS_KREYOL or _sans_accents(m) in _KREYOL_NU)
+    f = sum(1 for m in mots if m in MOTS_FRANCAIS)
+    return (False, "français") if f > k else (True, "")
 
 
 def discover(root: Path, dirs: list[str] | None) -> list[Path]:
@@ -145,6 +206,9 @@ def main() -> int:
     p.add_argument("--hf-revision", default="main")
     p.add_argument("--ahead", type=int, default=48,
                    help="nombre de fichiers téléchargés d'avance")
+    p.add_argument("--no-filter", dest="filtrer", action="store_false", default=True,
+                   help="conserver le brouillon tel quel, sans écarter les "
+                        "hallucinations ni les bascules en français")
     p.add_argument("--keep-audio", action="store_true",
                    help="conserver les mp3 récupérés (par défaut ils sont supprimés "
                         "après transcription)")
@@ -244,7 +308,9 @@ def main() -> int:
     model = WhisperModel(args.model, device=args.device, compute_type=args.compute_type)
     print(f"  chargé en {time.time() - t0:.0f}s")
 
+    rejected = out.with_suffix(out.suffix + ".rejected.jsonl")
     ok = failed = empty = 0
+    rejets: dict[str, int] = {}
     last_error = ""
     audio_seconds = 0.0
     started = time.time()
@@ -273,6 +339,15 @@ def main() -> int:
                 text = " ".join(s.text.strip() for s in segments).strip()
                 audio_seconds += info.duration
                 ok += 1
+                if text and args.filtrer:
+                    garder, motif = juger(text)
+                    if not garder:
+                        rejets[motif] = rejets.get(motif, 0) + 1
+                        with rejected.open("a", encoding="utf-8") as rf:
+                            rf.write(json.dumps(
+                                {"file_name": name, "motif": motif,
+                                 "texte_rejete": text}, ensure_ascii=False) + "\n")
+                        text = ""
                 if not text:
                     empty += 1
             except Exception as exc:  # noqa: BLE001
@@ -311,6 +386,10 @@ def main() -> int:
     print()
     print(f"transcrits    : {ok:,}")
     print(f"dont vides    : {empty:,}")
+    if rejets:
+        detail = ", ".join(f"{k} {v:,}" for k, v in sorted(rejets.items()))
+        print(f"  écartés      : {sum(rejets.values()):,} ({detail})")
+        print(f"  texte écarté conservé dans : {rejected}")
     print(f"échecs        : {failed:,}")
     if ok and empty == ok:
         print("  ATTENTION : toutes les transcriptions sont vides. Vérifier le "
