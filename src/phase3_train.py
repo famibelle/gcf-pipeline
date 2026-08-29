@@ -96,6 +96,13 @@ def train(args) -> dict:
         from .metrics import corpus_cer, corpus_wer
         return {"wer": corpus_wer(dec_l, dec_p), "cer": corpus_cer(dec_l, dec_p)}
 
+    # fp16 et bf16 sont exclusifs ; on signale un repli plutôt que de le subir.
+    use_bf16 = args.bf16 and torch.cuda.is_available() and torch.cuda.is_bf16_supported()
+    if args.bf16 and not use_bf16:
+        log.warning("bf16 demandé mais indisponible sur ce matériel : repli en fp32.")
+    if use_bf16 and args.fp16:
+        raise SystemExit("--fp16 et --bf16 sont exclusifs. Sur T5/ByT5, garder --bf16.")
+
     targs = Seq2SeqTrainingArguments(
         output_dir=str(cfg.model_dir),
         per_device_train_batch_size=args.batch_size,
@@ -117,6 +124,14 @@ def train(args) -> dict:
         generation_max_length=cfg.max_target_len,
         generation_num_beams=args.beams,
         fp16=args.fp16 and torch.cuda.is_available(),
+        bf16=use_bf16,
+        # ByT5-small pèse 300M paramètres : les états AdamW seuls occupent 2.4 Go,
+        # soit ~4.8 Go avec poids et gradients, avant la moindre activation. Sur
+        # une carte de 8 Go l'entraînement ne démarre pas. Adafactor (l'optimiseur
+        # natif de T5) supprime ces états, le checkpointing recalcule les
+        # activations au lieu de les stocker.
+        optim=args.optim,
+        gradient_checkpointing=args.gradient_checkpointing,
         report_to=[],
         seed=cfg.seed,
     )
@@ -232,8 +247,15 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--patience", type=int, default=CFG.early_stopping_patience)
     p.add_argument("--beams", type=int, default=4)
     p.add_argument("--limit", type=int, default=None, help="tronquer les datasets (debug)")
+    p.add_argument("--optim", default="adafactor",
+                   help="adafactor (défaut, économe) ou adamw_torch")
+    p.add_argument("--gradient-checkpointing", action="store_true", default=True)
+    p.add_argument("--no-gradient-checkpointing", dest="gradient_checkpointing",
+                   action="store_false")
     p.add_argument("--fp16", action="store_true", default=CFG.fp16)
     p.add_argument("--no-fp16", dest="fp16", action="store_false")
+    p.add_argument("--bf16", action="store_true", default=CFG.bf16)
+    p.add_argument("--no-bf16", dest="bf16", action="store_false")
     p.add_argument("--eval-only", action="store_true")
     p.add_argument("--show", type=int, default=12)
     return p

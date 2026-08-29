@@ -55,7 +55,12 @@ class Config:
     label_smoothing: float = 0.1
     warmup_ratio: float = 0.06
     early_stopping_patience: int = 2
-    fp16: bool = True
+    # T5/ByT5 ont été pré-entraînés en bfloat16. Leurs activations sortent
+    # de la plage d'exposant du fp16 : débordement en inf, puis gradients
+    # NaN et poids jamais mis à jour. On entraîne donc en bf16, qui a la
+    # plage du fp32 pour le coût mémoire du fp16.
+    fp16: bool = False
+    bf16: bool = True
 
     # --- Phase 4 : filtrage --------------------------------------------------
     min_avg_logprob: float = -1.0
