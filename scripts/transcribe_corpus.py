@@ -64,7 +64,10 @@ def load_done(out: Path) -> dict[str, str]:
     done: dict[str, str] = {}
     if not out.exists():
         return done
-    with out.open(encoding="utf-8") as fh:
+    # utf-8-sig et non utf-8 : le metadata.jsonl du dépôt porte un BOM, et en
+    # utf-8 strict sa PREMIÈRE ligne échoue au parsage puis se fait avaler par
+    # le `continue` ci-dessous — elle serait alors retranscrite en silence.
+    with out.open(encoding="utf-8-sig") as fh:
         for line in fh:
             line = line.strip()
             if not line:
@@ -98,6 +101,15 @@ def main() -> int:
                    help="1 = glouton, nettement plus rapide et un peu moins bon")
     p.add_argument("--limit", type=int, default=None, help="s'arrêter après N fichiers (mesure)")
     p.add_argument("--redo", action="store_true", help="ignorer la reprise et tout retranscrire")
+    p.add_argument("--retry-empty", action="store_true",
+                   help="reprendre les entrées dont la transcription est vide "
+                        "(après une panne d'installation, par exemple)")
+    p.add_argument("--max-initial-failures", type=int, default=10,
+                   help="arrêt si les N premiers fichiers échouent tous")
+    p.add_argument("--preserve", default=None,
+                   help="jsonl existant dont les transcriptions non vides sont "
+                        "recopiées telles quelles et jamais recalculées "
+                        "(typiquement le metadata.jsonl actuel du dépôt)")
     args = p.parse_args()
 
     root = Path(args.root).expanduser().resolve()
@@ -112,6 +124,32 @@ def main() -> int:
         return 2
 
     done = {} if args.redo else load_done(out)
+
+    # Transcriptions à conserver intactes : elles sont écrites dans la sortie si
+    # elles n'y sont pas déjà, puis exclues du travail. La sortie devient ainsi un
+    # remplaçant complet du metadata.jsonl, sans qu'aucune ligne existante ne soit
+    # recalculée.
+    preserved = 0
+    if args.preserve:
+        src = Path(args.preserve).expanduser()
+        if not src.is_file():
+            print(f"--preserve : fichier introuvable ({src})", file=sys.stderr)
+            return 2
+        keep = {k: v for k, v in load_done(src).items() if v.strip()}
+        nouveaux = {k: v for k, v in keep.items() if k not in done}
+        if nouveaux:
+            with out.open("a", encoding="utf-8") as fh:
+                for k, v in nouveaux.items():
+                    fh.write(json.dumps({"file_name": k, "transcription": v},
+                                        ensure_ascii=False) + "\n")
+                fh.flush()
+                os.fsync(fh.fileno())
+        done.update(keep)
+        preserved = len(keep)
+
+    if args.retry_empty:
+        # Les lignes préservées restent hors du champ : elles ne sont pas vides.
+        done = {k: v for k, v in done.items() if v.strip()}
     todo = [f for f in files if key_of(f, root) not in done]
     if args.limit:
         todo = todo[: args.limit]
@@ -120,6 +158,8 @@ def main() -> int:
     print(f"sortie        : {out}")
     print(f"audios trouvés: {len(files):,}")
     print(f"déjà faits    : {len(done):,}")
+    if preserved:
+        print(f"  dont préservés : {preserved:,} (jamais recalculés)")
     print(f"à traiter     : {len(todo):,}")
     if not todo:
         print("Rien à faire.")
@@ -132,7 +172,8 @@ def main() -> int:
     model = WhisperModel(args.model, device=args.device, compute_type=args.compute_type)
     print(f"  chargé en {time.time() - t0:.0f}s")
 
-    ok = failed = 0
+    ok = failed = empty = 0
+    last_error = ""
     audio_seconds = 0.0
     started = time.time()
     # Ouverture en ajout : la reprise ne réécrit jamais ce qui existe.
@@ -152,10 +193,26 @@ def main() -> int:
                 text = " ".join(s.text.strip() for s in segments).strip()
                 audio_seconds += info.duration
                 ok += 1
+                if not text:
+                    empty += 1
             except Exception as exc:  # noqa: BLE001
-                print(f"  ÉCHEC {name} : {type(exc).__name__}: {exc}", file=sys.stderr)
+                last_error = f"{type(exc).__name__}: {exc}"
+                print(f"  ÉCHEC {name} : {last_error}", file=sys.stderr)
                 text = ""
                 failed += 1
+
+            # Un mp3 illisible se saute ; une installation cassée fait échouer
+            # TOUT et doit s'arrêter là. Sans ce garde-fou, une bibliothèque CUDA
+            # manquante produirait 40 000 lignes vides en plusieurs heures.
+            if ok == 0 and failed >= args.max_initial_failures:
+                fh.flush()
+                os.fsync(fh.fileno())
+                print(f"\nARRÊT : les {failed} premiers fichiers ont tous échoué.\n"
+                      f"Dernière erreur — {last_error}\n"
+                      f"Ce n'est pas un problème de données mais d'installation. "
+                      f"Corriger, puis relancer avec --retry-empty pour reprendre "
+                      f"les lignes vides déjà écrites.", file=sys.stderr)
+                return 1
 
             fh.write(json.dumps({"file_name": name, "transcription": text},
                                 ensure_ascii=False) + "\n")
@@ -173,7 +230,11 @@ def main() -> int:
     elapsed = time.time() - started
     print()
     print(f"transcrits    : {ok:,}")
+    print(f"dont vides    : {empty:,}")
     print(f"échecs        : {failed:,}")
+    if ok and empty == ok:
+        print("  ATTENTION : toutes les transcriptions sont vides. Vérifier le "
+              "modèle et la langue avant de lancer la passe complète.", file=sys.stderr)
     print(f"durée calcul  : {human(elapsed)}")
     if audio_seconds:
         print(f"audio traité  : {human(audio_seconds)}")
