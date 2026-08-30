@@ -199,6 +199,9 @@ kbd{
 .qui{padding:5px 8px;border:1px solid var(--line);border-radius:8px;background:var(--surface);
   color:var(--ink);font:inherit;font-size:12px;width:120px}
 .vide{padding:24px 8px;color:var(--ink-3);font-size:13px;text-align:center}
+/* « Inutilisable » juge l'extrait, « ignoré » juge le moment : deux couleurs. */
+.tag.rebut{background:var(--warn-soft);color:var(--warn)}
+.row[data-state="rebut"] .dot{background:var(--warn);border-radius:2px}
 </style>
 </head>
 <body>
@@ -229,6 +232,7 @@ kbd{
       <button class="chip" data-filter="vide" aria-pressed="false">Vides</button>
       <button class="chip" data-etat="todo" aria-pressed="false">À faire</button>
       <button class="chip" data-etat="done" aria-pressed="false">Corrigés</button>
+      <button class="chip" data-etat="rebut" aria-pressed="false">Inutilisables</button>
     </div>
     <div class="meta"><span id="trouves">…</span><span id="stockage"></span></div>
     <div id="rows"></div>
@@ -272,6 +276,7 @@ kbd{
       <div class="actions">
         <button class="btn" id="copysrc">Reprendre la transcription</button>
         <button class="btn" id="skip">Ignorer ce segment</button>
+        <button class="btn" id="rebut" title="Inaudible, vide ou hors sujet">Inutilisable</button>
         <button class="btn primary" id="next">Valider et suivant</button>
       </div>
     </div>

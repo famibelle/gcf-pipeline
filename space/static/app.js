@@ -20,37 +20,55 @@ const secondes = ms => ms ? (ms / 1000).toFixed(1).replace(".", ",") + " s" : ""
 
 /* ---------- état local ---------- */
 function ligne(id){
-  if(!etat.has(id)) etat.set(id, {corrected: "", notes: "", skipped: false});
+  if(!etat.has(id)) etat.set(id, {corrected: "", notes: "", skipped: false, inutilisable: false});
   return etat.get(id);
+}
+function travail(id){
+  const s = etat.get(id);
+  return !!s && (s.corrected.trim() || s.skipped || s.inutilisable);
 }
 function stateOf(i){
   const s = etat.get(DATA[i].id);
   if(!s) return DATA[i].etat || "todo";
+  if(s.inutilisable) return "rebut";
   if(s.skipped) return "skip";
   return s.corrected.trim() ? "done" : "todo";
 }
-const LABEL = {todo: "à faire", done: "corrigé", skip: "ignoré"};
+const LABEL = {todo: "à faire", done: "corrigé", skip: "ignoré", rebut: "inutilisable"};
+
+/* ---------- écoute réelle ----------
+   Compte les secondes d'audio effectivement entendues, pas le temps passé
+   devant l'écran : une correction écrite sans avoir écouté se repère ainsi. */
+const ecoute = new Map();   // id -> {ms, lectures}
+function compteur(id){
+  if(!ecoute.has(id)) ecoute.set(id, {ms: 0, lectures: 0});
+  return ecoute.get(id);
+}
 
 function lireLocal(){
   try{
     const brut = localStorage.getItem(CLE);
     if(!brut) return;
     const j = JSON.parse(brut);
-    (j.rows || []).forEach(r => etat.set(r.id, {corrected: r.corrected || "", notes: r.notes || "", skipped: !!r.skipped}));
+    (j.rows || []).forEach(r => etat.set(r.id, {corrected: r.corrected || "", notes: r.notes || "",
+                                                skipped: !!r.skipped, inutilisable: !!r.inutilisable}));
+    (j.ecoute || []).forEach(([id, c]) => ecoute.set(id, c));
     (j.attente || []).forEach(r => enAttente.set(r.id, r));
   }catch(e){}
 }
 function ecrireLocal(){
   try{
     const rows = [...etat].map(([id, s]) => ({id, ...s}));
-    localStorage.setItem(CLE, JSON.stringify({at: Date.now(), rows, attente: [...enAttente.values()]}));
+    localStorage.setItem(CLE, JSON.stringify({at: Date.now(), rows, attente: [...enAttente.values()],
+                                              ecoute: [...ecoute]}));
   }catch(e){}
 }
 
 /* ---------- envoi au serveur ---------- */
 function persist(id){
-  const s = ligne(id);
-  enAttente.set(id, {id, corrected: s.corrected, notes: s.notes, skipped: s.skipped});
+  const s = ligne(id), e = compteur(id);
+  enAttente.set(id, {id, corrected: s.corrected, notes: s.notes, skipped: s.skipped,
+                     inutilisable: s.inutilisable, ecoute_ms: Math.round(e.ms), lectures: e.lectures});
   ecrireLocal();
   el("saved").textContent = "brouillon";
   clearTimeout(envoiTimer);
@@ -86,7 +104,7 @@ async function envoyer(){
 async function chercher(remise){
   if(remise) requete.offset = 0;
   const p = new URLSearchParams({q: requete.q, motif: requete.motif, etat: requete.etat,
-                                 offset: requete.offset, limit: requete.limit});
+                                 annotateur, offset: requete.offset, limit: requete.limit});
   el("trouves").textContent = "recherche…";
   let j;
   try{ j = await (await fetch(API + "/segments?" + p)).json(); }
@@ -96,8 +114,9 @@ async function chercher(remise){
   DATA = remise ? j.items : DATA.concat(arrivants);
   // Le serveur connaît les corrections des autres : elles priment sur le vide.
   j.items.forEach(it => {
-    if(!etat.has(it.id) && (it.correction || it.notes))
-      etat.set(it.id, {corrected: it.correction || "", notes: it.notes || "", skipped: it.etat === "skip"});
+    if(!etat.has(it.id) && (it.correction || it.notes || it.etat !== "todo"))
+      etat.set(it.id, {corrected: it.correction || "", notes: it.notes || "",
+                       skipped: it.etat === "skip", inutilisable: it.etat === "rebut"});
   });
   el("trouves").textContent = total.toLocaleString("fr-FR") + " segment" + (total > 1 ? "s" : "")
     + (DATA.length < total ? ` · ${DATA.length} affichés` : "");
@@ -176,9 +195,13 @@ el("hasard").addEventListener("click", () => {
   DATA = [];
   chercher(false).then(() => { if(DATA.length){ active = 0; go(0); } });
 });
+let quiTimer = null;
 el("annotateur").addEventListener("input", e => {
   annotateur = e.target.value.trim();
   try{ localStorage.setItem("gcf-annotateur", annotateur); }catch(err){}
+  // L'avancement est celui de la personne : changer de nom rebat la liste.
+  clearTimeout(quiTimer);
+  quiTimer = setTimeout(() => { etat.clear(); chercher(true); majStats(); }, 500);
 });
 
 /* ---------- diff mot à mot ---------- */
@@ -210,7 +233,12 @@ function diffMark(srcText, curText){
 const audio = new Audio();
 function go(i){
   if(i < 0 || i >= DATA.length) return;
+  // Le temps d'écoute du segment qu'on quitte n'est envoyé que s'il a donné
+  // lieu à quelque chose : écouter sans corriger ne crée pas de ligne.
+  const precedent = DATA[active];
+  if(precedent && i !== active && travail(precedent.id)) persist(precedent.id);
   active = i;
+  dernierTemps = 0;
   const d = DATA[i], s = ligne(d.id);
   el("segid").textContent = court(d.id) + " · " + (i + 1) + "/" + DATA.length
     + (d.duree ? " · " + secondes(d.duree) : "");
@@ -241,8 +269,10 @@ function note(msg){
 async function majStats(){
   try{
     stats = await (await fetch(API + "/stats")).json();
-    el("sub").textContent = stats.segments.toLocaleString("fr-FR")
-      + " segments du corpus · audio relayé depuis " + stats.corpus;
+    el("sub").textContent = stats.segments.toLocaleString("fr-FR") + " segments · "
+      + stats.versions.toLocaleString("fr-FR") + " corrections"
+      + (stats.doubles ? " dont " + stats.doubles + " en double" : "")
+      + (stats.rebuts ? " · " + stats.rebuts + " inutilisables" : "");
     el("stockage").textContent = stats.stockage || "";
     paint();
   }catch(e){}
@@ -253,7 +283,7 @@ el("edit").addEventListener("input", e => {
   const d = DATA[active]; if(!d) return;
   const s = ligne(d.id);
   s.corrected = e.target.value;
-  if(e.target.value.trim()) s.skipped = false;
+  if(e.target.value.trim()){ s.skipped = false; s.inutilisable = false; }
   persist(d.id); refreshSuggest();
   clearTimeout(paintTimer); paintTimer = setTimeout(() => { paint(); renderList(); }, 220);
 });
@@ -264,14 +294,22 @@ el("notes").addEventListener("input", e => {
 el("copysrc").addEventListener("click", () => {
   const d = DATA[active]; if(!d) return;
   const s = ligne(d.id);
-  el("edit").value = d.texte; s.corrected = d.texte; s.skipped = false;
+  el("edit").value = d.texte; s.corrected = d.texte; s.skipped = false; s.inutilisable = false;
   persist(d.id); paint(); renderList(); el("edit").focus();
 });
 el("skip").addEventListener("click", () => {
   const d = DATA[active]; if(!d) return;
   const s = ligne(d.id);
-  s.skipped = true; s.corrected = ""; el("edit").value = "";
-  persist(d.id); paint(); renderList(); note("Segment ignoré");
+  s.skipped = true; s.inutilisable = false; s.corrected = ""; el("edit").value = "";
+  persist(d.id); paint(); renderList(); note("Segment ignoré — à reprendre plus tard");
+});
+el("rebut").addEventListener("click", () => {
+  const d = DATA[active]; if(!d) return;
+  const s = ligne(d.id);
+  // Juger l'extrait, pas soi-même : inaudible, vide, hors sujet. Sans cette
+  // sortie, on écrit n'importe quoi pour ne pas laisser un blanc.
+  s.inutilisable = true; s.skipped = false; s.corrected = ""; el("edit").value = "";
+  persist(d.id); paint(); renderList(); note("Marqué inutilisable — il ne partira pas dans le corpus");
 });
 el("next").addEventListener("click", () => nextTodo());
 function nextTodo(){
@@ -290,16 +328,30 @@ function setIcon(playing){
 function fmt(t){ if(!isFinite(t)) return "0:00"; const m = Math.floor(t / 60), s = Math.floor(t % 60); return m + ":" + String(s).padStart(2, "0"); }
 function toggle(){ if(audio.paused){ audio.play().catch(() => {}); } else audio.pause(); }
 el("play").addEventListener("click", toggle);
-audio.addEventListener("play", () => setIcon(true));
+let dernierTemps = 0;
+audio.addEventListener("play", () => {
+  setIcon(true);
+  const d = DATA[active];
+  if(d) compteur(d.id).lectures++;
+  dernierTemps = audio.currentTime;
+});
 audio.addEventListener("pause", () => setIcon(false));
 audio.addEventListener("ended", () => setIcon(false));
 audio.addEventListener("error", () => { if(audio.getAttribute("src")) note("Audio indisponible pour ce segment"); });
 audio.addEventListener("loadedmetadata", () => el("dur").textContent = fmt(audio.duration));
 audio.addEventListener("timeupdate", () => {
+  // Le pas est borné : un saut dans la barre ne compte pas comme de l'écoute.
+  const pas = audio.currentTime - dernierTemps;
+  dernierTemps = audio.currentTime;
+  const d = DATA[active];
+  if(d && pas > 0 && pas < 1.5) compteur(d.id).ms += pas * 1000;
   el("cur").textContent = fmt(audio.currentTime);
   if(audio.duration) el("scrub").value = Math.round(1000 * audio.currentTime / audio.duration);
 });
-el("scrub").addEventListener("input", e => { if(audio.duration) audio.currentTime = audio.duration * e.target.value / 1000; });
+el("scrub").addEventListener("input", e => {
+  if(audio.duration) audio.currentTime = audio.duration * e.target.value / 1000;
+  dernierTemps = audio.currentTime;
+});
 el("again").addEventListener("click", () => { audio.currentTime = 0; audio.play().catch(() => {}); });
 document.querySelectorAll(".rate").forEach(r => r.addEventListener("click", () => {
   document.querySelectorAll(".rate").forEach(x => x.setAttribute("aria-pressed", "false"));
@@ -388,7 +440,7 @@ function acceptSuggestion(word){
   const d = DATA[active]; if(!d) return;
   const s = ligne(d.id);
   s.corrected = ta.value;
-  if(ta.value.trim()) s.skipped = false;
+  if(ta.value.trim()){ s.skipped = false; s.inutilisable = false; }
   persist(d.id); paint(); renderList(); refreshSuggest();
 }
 el("suggest").addEventListener("click", e => {

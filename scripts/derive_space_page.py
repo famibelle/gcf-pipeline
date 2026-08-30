@@ -26,6 +26,9 @@ css = """
 .qui{padding:5px 8px;border:1px solid var(--line);border-radius:8px;background:var(--surface);
   color:var(--ink);font:inherit;font-size:12px;width:120px}
 .vide{padding:24px 8px;color:var(--ink-3);font-size:13px;text-align:center}
+/* « Inutilisable » juge l'extrait, « ignoré » juge le moment : deux couleurs. */
+.tag.rebut{background:var(--warn-soft);color:var(--warn)}
+.row[data-state="rebut"] .dot{background:var(--warn);border-radius:2px}
 </style>"""
 tete = tete.replace("</style>", css, 1)
 
@@ -40,6 +43,11 @@ tete = tete.replace(
 # Plus de « pré-correction » : le corpus n'en a pas, seule la sortie Whisper existe.
 tete = tete.replace('<button class="btn" id="fill">Partir de la pré-correction</button>\n        ', '')
 tete = tete.replace('id="copysrc">Copier la source', 'id="copysrc">Reprendre la transcription')
+# Distinguer « je passe » de « cet extrait ne vaut rien » : sans cette sortie,
+# on écrit n'importe quoi plutôt que de laisser un blanc.
+tete = tete.replace('<button class="btn" id="skip">Ignorer ce segment</button>',
+                    '<button class="btn" id="skip">Ignorer ce segment</button>\n'
+                    '        <button class="btn" id="rebut" title="Inaudible, vide ou hors sujet">Inutilisable</button>')
 tete = tete.replace(
     '<button class="btn primary" id="export">Exporter le CSV</button>',
     '<a class="btn primary" id="export" href="api/export.csv" download>Exporter le CSV</a>')
@@ -57,6 +65,7 @@ tete = tete.replace(ancien_filtres, """<div class="qbox">
       <button class="chip" data-filter="vide" aria-pressed="false">Vides</button>
       <button class="chip" data-etat="todo" aria-pressed="false">À faire</button>
       <button class="chip" data-etat="done" aria-pressed="false">Corrigés</button>
+      <button class="chip" data-etat="rebut" aria-pressed="false">Inutilisables</button>
     </div>
     <div class="meta"><span id="trouves">…</span><span id="stockage"></span></div>
     """)

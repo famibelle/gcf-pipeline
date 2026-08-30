@@ -39,7 +39,24 @@ reste en mémoire et l'interface le signale — pense alors à exporter le CSV.
 - `GET /api/segments` — piocher : recherche plein texte, motif de rejet, avancement.
 - `GET /api/audio/{chemin}` — relais authentifié, `Range` compris (donc barre de progression utilisable).
 - `POST /api/corrections` — enregistre, un fichier JSONL par annotateur.
-- `GET /api/export.csv` — tout le travail, en une fois.
+- `GET /api/export.csv` — une ligne par (segment, annotateur).
+
+## Savoir si une correction vaut quelque chose
+
+Les corrections sont rangées par **(segment, annotateur)**, jamais par segment
+seul : deux personnes peuvent traiter le même extrait sans s'effacer, ce qui est
+la condition pour mesurer un jour leur accord. Chacune ne voit que son propre
+avancement, et le nombre de versions des autres — jamais leur texte, qui
+biaiserait la comparaison.
+
+Chaque correction emporte `ecoute_ms` (audio réellement entendu, pas le temps
+passé devant l'écran) et `lectures`, à rapprocher de `duree_ms` : une correction
+écrite sans avoir écouté se repère seule.
+
+Trois issues, et non deux : **corrigé**, **ignoré** (je passe, à reprendre) et
+**inutilisable** (l'extrait ne vaut rien — inaudible, vide, hors sujet).
+Confondre les deux dernières pousserait à inventer une transcription plutôt que
+de laisser un blanc, et un faux corpus est pire qu'un corpus plus petit.
 
 Le disque d'un Space est éphémère : les corrections vivent en mémoire et sont
 poussées vers le dataset d'annotations toutes les 20 secondes.

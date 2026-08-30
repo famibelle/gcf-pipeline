@@ -49,16 +49,43 @@ def charger_index() -> tuple[list[dict], dict[str, int]]:
 
 
 SEGMENTS, PAR_CHEMIN = charger_index()
+PAR_DUREE = {s["c"]: s.get("d", 0) for s in SEGMENTS}
+
+
+def nettoyer(annotateur: str | None) -> str:
+    """Un nom d'annotateur sert de nom de fichier : il doit rester anodin."""
+    propre = "".join(c for c in (annotateur or "").strip() if c.isalnum() or c in "-_")
+    return propre[:40] or "anonyme"
 
 
 # ---------------------------------------------------------------- corrections
 
 # En mémoire, et poussées vers un dataset : le disque d'un Space est éphémère,
 # tout ce qui n'est pas commité disparaît à la mise en veille.
-CORRECTIONS: dict[str, dict] = {}
+#
+# La clé est (segment, annotateur) et non le seul segment : deux personnes
+# doivent pouvoir corriger le même extrait sans s'effacer, sans quoi il devient
+# impossible de mesurer leur accord — et donc de savoir si le travail est bon.
+CORRECTIONS: dict[str, dict[str, dict]] = {}
 VERROU = threading.Lock()
-A_ECRIRE = False
+A_ECRIRE: set[str] = set()
 ETAT_DISTANT = "démarrage"
+
+
+def poser(row: dict) -> None:
+    """Range une correction, la plus récente gagnant à annotateur égal."""
+    par_annotateur = CORRECTIONS.setdefault(row["id"], {})
+    ancienne = par_annotateur.get(row["annotateur"])
+    if not ancienne or row.get("at", 0) >= ancienne.get("at", 0):
+        par_annotateur[row["annotateur"]] = row
+
+
+def mienne(chemin: str, annotateur: str) -> dict:
+    return CORRECTIONS.get(chemin, {}).get(annotateur, {})
+
+
+def remplie(row: dict) -> bool:
+    return bool((row.get("corrected") or "").strip())
 
 
 def charger_corrections() -> None:
@@ -85,23 +112,23 @@ def charger_corrections() -> None:
                 if not ligne:
                     continue
                 row = json.loads(ligne)
-                ancienne = CORRECTIONS.get(row["id"])
-                # Dernière écriture gagnante : deux annotateurs sur le même
-                # segment, c'est la plus récente qui fait foi.
-                if not ancienne or row.get("at", 0) >= ancienne.get("at", 0):
-                    CORRECTIONS[row["id"]] = row
-                    lus += 1
+                # Le nom du fichier fait foi : une ligne sans annotateur vient
+                # d'une version antérieure du service.
+                row.setdefault("annotateur", nom[len("corrections/"):-len(".jsonl")])
+                poser(row)
+                lus += 1
     ETAT_DISTANT = f"{lus} corrections reprises depuis {ANNOTATIONS}"
 
 
-def ecrire_corrections() -> None:
-    """Un fichier par annotateur : deux personnes n'écrasent pas leur travail."""
+def ecrire_corrections(a_ecrire: set[str]) -> None:
+    """Un fichier par annotateur, et seulement ceux qui ont bougé."""
     global ETAT_DISTANT
     with VERROU:
-        instantane = list(CORRECTIONS.values())
-    par_annotateur: dict[str, list[dict]] = {}
-    for row in instantane:
-        par_annotateur.setdefault(row.get("annotateur") or "anonyme", []).append(row)
+        par_annotateur: dict[str, list[dict]] = {a: [] for a in a_ecrire}
+        for versions in CORRECTIONS.values():
+            for annotateur, row in versions.items():
+                if annotateur in par_annotateur:
+                    par_annotateur[annotateur].append(row)
     for annotateur, rows in par_annotateur.items():
         contenu = "".join(
             json.dumps(r, ensure_ascii=False) + "\n"
@@ -123,10 +150,13 @@ def boucle_ecriture() -> None:
         time.sleep(DELAI_FLUSH)
         if not A_ECRIRE:
             continue
-        A_ECRIRE = False
+        with VERROU:
+            a_ecrire, A_ECRIRE = A_ECRIRE, set()
         try:
-            ecrire_corrections()
+            ecrire_corrections(a_ecrire)
         except Exception as err:
+            with VERROU:
+                A_ECRIRE |= a_ecrire  # rien n'est abandonné, on retentera
             # Un jeton en lecture seule tombe ici. On garde tout en mémoire et
             # on le dit à l'interface, plutôt que de perdre le travail en silence.
             ETAT_DISTANT = f"écriture distante impossible ({type(err).__name__}) — export CSV conseillé"
@@ -140,20 +170,24 @@ def demarrage() -> None:
 
 # ---------------------------------------------------------------- API
 
-def etat_de(chemin: str) -> str:
-    row = CORRECTIONS.get(chemin)
+def etat_de(chemin: str, annotateur: str) -> str:
+    """L'avancement affiché est celui de l'annotateur, pas celui des autres."""
+    row = mienne(chemin, annotateur)
     if not row:
         return "todo"
+    if row.get("inutilisable"):
+        return "rebut"
     if row.get("skipped"):
         return "skip"
-    return "done" if (row.get("corrected") or "").strip() else "todo"
+    return "done" if remplie(row) else "todo"
 
 
 @app.get("/api/segments")
-def segments(q: str = "", motif: str = "", etat: str = "tous",
+def segments(q: str = "", motif: str = "", etat: str = "tous", annotateur: str = "",
              offset: int = 0, limit: int = 200):
     """Piocher dans le corpus : recherche plein texte, motif de rejet, avancement."""
     limit = max(1, min(limit, 500))
+    annotateur = nettoyer(annotateur)
     q = q.strip().lower()
     trouves = []
     for seg in SEGMENTS:
@@ -161,7 +195,7 @@ def segments(q: str = "", motif: str = "", etat: str = "tous",
             continue
         if q and q not in seg.get("t", "").lower() and q not in seg["c"].lower():
             continue
-        if etat != "tous" and etat_de(seg["c"]) != etat:
+        if etat != "tous" and etat_de(seg["c"], annotateur) != etat:
             continue
         trouves.append(seg)
     page = trouves[offset:offset + limit]
@@ -174,9 +208,13 @@ def segments(q: str = "", motif: str = "", etat: str = "tous",
                 "texte": s.get("t", ""),
                 "motif": s.get("m", ""),
                 "duree": s.get("d", 0),
-                "etat": etat_de(s["c"]),
-                "correction": CORRECTIONS.get(s["c"], {}).get("corrected", ""),
-                "notes": CORRECTIONS.get(s["c"], {}).get("notes", ""),
+                "etat": etat_de(s["c"], annotateur),
+                "correction": mienne(s["c"], annotateur).get("corrected", ""),
+                "notes": mienne(s["c"], annotateur).get("notes", ""),
+                # Le nombre de versions des autres, jamais leur texte : afficher
+                # une correction déjà écrite biaiserait toute mesure d'accord.
+                "autres": sum(1 for a, r in CORRECTIONS.get(s["c"], {}).items()
+                              if a != annotateur and remplie(r)),
             }
             for s in page
         ],
@@ -185,12 +223,17 @@ def segments(q: str = "", motif: str = "", etat: str = "tous",
 
 @app.get("/api/stats")
 def stats():
-    faits = sum(1 for c in CORRECTIONS.values() if (c.get("corrected") or "").strip())
+    versions = [r for v in CORRECTIONS.values() for r in v.values()]
     return {
         "segments": len(SEGMENTS),
-        "corriges": faits,
-        "ignores": sum(1 for c in CORRECTIONS.values() if c.get("skipped")),
-        "annotateurs": sorted({c.get("annotateur") or "anonyme" for c in CORRECTIONS.values()}),
+        # Segments couverts au moins une fois, et total des versions : l'écart
+        # entre les deux, c'est la double annotation déjà faite.
+        "corriges": sum(1 for v in CORRECTIONS.values() if any(remplie(r) for r in v.values())),
+        "versions": sum(1 for r in versions if remplie(r)),
+        "doubles": sum(1 for v in CORRECTIONS.values()
+                       if sum(1 for r in v.values() if remplie(r)) > 1),
+        "rebuts": sum(1 for v in CORRECTIONS.values() if any(r.get("inutilisable") for r in v.values())),
+        "annotateurs": sorted({r["annotateur"] for r in versions}),
         "stockage": ETAT_DISTANT,
         "corpus": CORPUS,
     }
@@ -198,41 +241,53 @@ def stats():
 
 @app.post("/api/corrections")
 async def enregistrer(request: Request):
-    global A_ECRIRE
     charge = await request.json()
-    annotateur = (charge.get("annotateur") or "anonyme").strip() or "anonyme"
-    annotateur = "".join(c for c in annotateur if c.isalnum() or c in "-_")[:40] or "anonyme"
+    annotateur = nettoyer(charge.get("annotateur"))
     maintenant = int(time.time() * 1000)
     with VERROU:
         for row in charge.get("rows", []):
             ident = row.get("id")
             if ident not in PAR_CHEMIN:
                 continue
-            CORRECTIONS[ident] = {
+            poser({
                 "id": ident,
+                "annotateur": annotateur,
                 "corrected": row.get("corrected", ""),
                 "notes": row.get("notes", ""),
                 "skipped": bool(row.get("skipped")),
-                "annotateur": annotateur,
+                # « Inutilisable » n'est pas « ignoré » : le premier juge
+                # l'extrait, le second l'annotateur. Les confondre pousserait à
+                # inventer une transcription plutôt qu'à laisser un blanc.
+                "inutilisable": bool(row.get("inutilisable")),
+                # De quoi repérer une correction écrite sans avoir écouté.
+                "ecoute_ms": int(row.get("ecoute_ms") or 0),
+                "lectures": int(row.get("lectures") or 0),
+                "duree": PAR_DUREE.get(ident, 0),
                 "at": maintenant,
-            }
-    A_ECRIRE = True
+            })
+        A_ECRIRE.add(annotateur)
     return {"ok": True, "stockage": ETAT_DISTANT}
 
 
 @app.get("/api/export.csv")
 def export():
     tampon = StringIO()
-    tampon.write("segment_id,whisper,motif,corrected,notes,annotateur,at\r\n")
+    # Une ligne par (segment, annotateur) : c'est ce qui permettra de comparer
+    # deux versions du même extrait, donc de mesurer si le travail est bon.
+    tampon.write("segment_id,whisper,motif,duree_ms,corrected,notes,annotateur,"
+                 "etat,ecoute_ms,lectures,at\r\n")
     for ident in sorted(CORRECTIONS):
-        row = CORRECTIONS[ident]
         seg = SEGMENTS[PAR_CHEMIN[ident]] if ident in PAR_CHEMIN else {}
-        cellules = [ident, seg.get("t", ""), seg.get("m", ""), row.get("corrected", ""),
-                    row.get("notes", ""), row.get("annotateur", ""), str(row.get("at", ""))]
-        tampon.write(",".join(
-            '"' + c.replace('"', '""') + '"' if any(x in c for x in ',"\r\n') else c
-            for c in cellules
-        ) + "\r\n")
+        for annotateur in sorted(CORRECTIONS[ident]):
+            row = CORRECTIONS[ident][annotateur]
+            cellules = [ident, seg.get("t", ""), seg.get("m", ""), str(seg.get("d", 0)),
+                        row.get("corrected", ""), row.get("notes", ""), annotateur,
+                        etat_de(ident, annotateur), str(row.get("ecoute_ms", 0)),
+                        str(row.get("lectures", 0)), str(row.get("at", ""))]
+            tampon.write(",".join(
+                '"' + c.replace('"', '""') + '"' if any(x in c for x in ',"\r\n') else c
+                for c in cellules
+            ) + "\r\n")
     return PlainTextResponse(
         tampon.getvalue(), media_type="text/csv",
         headers={"Content-Disposition": 'attachment; filename="corrections_gcf.csv"'},
