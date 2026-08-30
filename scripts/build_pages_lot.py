@@ -50,6 +50,8 @@ def main() -> int:
     p.add_argument("--lot", default="rejets", help="nom du lot")
     p.add_argument("--motif", action="append",
                    help="motifs retenus (défaut : hallucination, français, vide)")
+    p.add_argument("--tous", action="store_true",
+                   help="tirer dans tout le corpus transcrit, sans filtre de motif")
     p.add_argument("--max", type=int, default=500, help="nombre de segments")
     p.add_argument("--debit", type=int, default=32, help="kbps du transcodage")
     p.add_argument("--duree-max", type=float, default=25.0, help="secondes")
@@ -69,9 +71,14 @@ def main() -> int:
         return 2
     segments = [json.loads(l) for l in index.open(encoding="utf-8") if l.strip()]
 
-    motifs = set(args.motif or ["hallucination", "français", "vide"])
-    retenus = [s for s in segments
-               if s["m"] in motifs and 0 < s["d"] <= args.duree_max * 1000]
+    if args.tous:
+        # Tirage sur tout le corpus : mesure le taux d'erreur réel, là où un lot
+        # de rejets ne montre que les défauts déjà connus.
+        retenus = [s for s in segments if 0 < s["d"] <= args.duree_max * 1000]
+    else:
+        motifs = set(args.motif or ["hallucination", "français", "vide"])
+        retenus = [s for s in segments
+                   if s["m"] in motifs and 0 < s["d"] <= args.duree_max * 1000]
     # Tirage reproductible : reconstruire le lot deux fois donne le même lot,
     # donc pas de fichiers orphelins dans le dépôt.
     random.Random(args.graine).shuffle(retenus)
