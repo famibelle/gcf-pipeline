@@ -19,7 +19,7 @@ PLEIN=$((N * LARGEUR / TOT))
 printf '\n  passe Whisper : %s\n\n' "$ETAT"
 printf '  ['
 for i in $(seq 1 $LARGEUR); do [ "$i" -le "$PLEIN" ] && printf '#' || printf '.'; done
-printf ']  %d / %d  (%.1f%%)\n\n' "$N" "$TOT" "$(echo "scale=2; 100*$N/$TOT" | bc)"
+printf ']  %d / %d  (%.1f%%)\n\n' "$N" "$TOT" "$(awk -v n="$N" -v t="$TOT" 'BEGIN{print 100*n/t}')"
 
 printf '  cadence   : %s\n' "$(tr '\r' '\n' < "$LOG" 2>/dev/null | grep 'fichier/s' | tail -1 | sed 's/^ *//')"
 printf '  écartés   : %s lignes (hallucinations et français)\n' "$REJ"
