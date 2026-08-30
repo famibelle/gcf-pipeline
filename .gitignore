@@ -55,3 +55,5 @@ runs/
 space/data/index.jsonl
 # Moteur kréyòl : copié depuis docs/assets par scripts/deploy_space.sh
 space/static/assets/
+# Témoins du Space : reconstruits par scripts/build_temoins.py
+space/data/temoins.jsonl

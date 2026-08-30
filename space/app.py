@@ -7,6 +7,7 @@ malgré tout écoutables un par un.
 """
 from __future__ import annotations
 
+import hashlib
 import json
 import os
 import threading
@@ -27,6 +28,14 @@ REVISION = os.environ.get("CORPUS_REVISION", "main")
 ANNOTATIONS = os.environ.get("ANNOT_DATASET", "POTOMITAN/gcf-annotations")
 JETON = os.environ.get("HF_TOKEN", "")
 DELAI_FLUSH = int(os.environ.get("DELAI_FLUSH", "20"))
+# Deux passages sur un même extrait séparés de plus d'une heure font deux
+# versions ; en deçà, c'est la même séance d'édition qui se poursuit.
+DELAI_VERSION = int(os.environ.get("DELAI_VERSION", "3600")) * 1000
+# Re-test : un extrait déjà corrigé, resservi vierge après un délai, pour
+# mesurer l'accord d'un annotateur avec lui-même. C'est ce qui remplace
+# l'accord entre deux personnes quand il n'y en a qu'une.
+DELAI_RETEST = int(os.environ.get("DELAI_RETEST", "14")) * 86400 * 1000
+TAUX_RETEST = int(os.environ.get("TAUX_RETEST", "30"))  # pour mille
 
 app = FastAPI(title="Annotation GCF")
 session = requests.Session()
@@ -48,7 +57,26 @@ def charger_index() -> tuple[list[dict], dict[str, int]]:
     return segments, {s["c"]: i for i, s in enumerate(segments)}
 
 
+def charger_temoins() -> dict[str, str]:
+    """Extraits dont la bonne transcription est connue, glissés dans le flux.
+
+    L'annotateur ne sait pas lesquels : c'est ce qui permet de mesurer son
+    travail sans qu'un second annotateur ait à repasser derrière lui.
+    """
+    chemin = RACINE / "data" / "temoins.jsonl"
+    connus: dict[str, str] = {}
+    if chemin.exists():
+        with chemin.open(encoding="utf-8") as fh:
+            for ligne in fh:
+                ligne = ligne.strip()
+                if ligne:
+                    row = json.loads(ligne)
+                    connus[row["c"]] = row["ref"]
+    return connus
+
+
 SEGMENTS, PAR_CHEMIN = charger_index()
+TEMOINS = charger_temoins()
 PAR_DUREE = {s["c"]: s.get("d", 0) for s in SEGMENTS}
 
 
@@ -66,22 +94,33 @@ def nettoyer(annotateur: str | None) -> str:
 # La clé est (segment, annotateur) et non le seul segment : deux personnes
 # doivent pouvoir corriger le même extrait sans s'effacer, sans quoi il devient
 # impossible de mesurer leur accord — et donc de savoir si le travail est bon.
-CORRECTIONS: dict[str, dict[str, dict]] = {}
+CORRECTIONS: dict[str, dict[str, list[dict]]] = {}
 VERROU = threading.Lock()
 A_ECRIRE: set[str] = set()
 ETAT_DISTANT = "démarrage"
 
 
 def poser(row: dict) -> None:
-    """Range une correction, la plus récente gagnant à annotateur égal."""
-    par_annotateur = CORRECTIONS.setdefault(row["id"], {})
-    ancienne = par_annotateur.get(row["annotateur"])
-    if not ancienne or row.get("at", 0) >= ancienne.get("at", 0):
-        par_annotateur[row["annotateur"]] = row
+    """Range une correction en conservant les reprises ultérieures.
+
+    Les frappes successives d'une même séance remplacent la dernière version ;
+    un retour sur l'extrait des jours plus tard en ajoute une. Sans cet
+    historique, impossible de comparer un annotateur à lui-même.
+    """
+    versions = CORRECTIONS.setdefault(row["id"], {}).setdefault(row["annotateur"], [])
+    if versions and row.get("at", 0) - versions[-1].get("at", 0) < DELAI_VERSION:
+        versions[-1] = row
+    else:
+        versions.append(row)
+
+
+def versions_de(chemin: str, annotateur: str) -> list[dict]:
+    return CORRECTIONS.get(chemin, {}).get(annotateur, [])
 
 
 def mienne(chemin: str, annotateur: str) -> dict:
-    return CORRECTIONS.get(chemin, {}).get(annotateur, {})
+    versions = versions_de(chemin, annotateur)
+    return versions[-1] if versions else {}
 
 
 def remplie(row: dict) -> bool:
@@ -99,6 +138,7 @@ def charger_corrections() -> None:
         ETAT_DISTANT = f"dépôt d'annotations illisible ({type(err).__name__})"
         return
     lus = 0
+    moisson: list[dict] = []
     for nom in fichiers:
         if not nom.startswith("corrections/") or not nom.endswith(".jsonl"):
             continue
@@ -115,8 +155,11 @@ def charger_corrections() -> None:
                 # Le nom du fichier fait foi : une ligne sans annotateur vient
                 # d'une version antérieure du service.
                 row.setdefault("annotateur", nom[len("corrections/"):-len(".jsonl")])
-                poser(row)
+                moisson.append(row)
                 lus += 1
+    # L'ordre chronologique fait foi : c'est lui qui découpe les versions.
+    for row in sorted(moisson, key=lambda r: r.get("at", 0)):
+        poser(row)
     ETAT_DISTANT = f"{lus} corrections reprises depuis {ANNOTATIONS}"
 
 
@@ -125,14 +168,14 @@ def ecrire_corrections(a_ecrire: set[str]) -> None:
     global ETAT_DISTANT
     with VERROU:
         par_annotateur: dict[str, list[dict]] = {a: [] for a in a_ecrire}
-        for versions in CORRECTIONS.values():
-            for annotateur, row in versions.items():
+        for par_ann in CORRECTIONS.values():
+            for annotateur, versions in par_ann.items():
                 if annotateur in par_annotateur:
-                    par_annotateur[annotateur].append(row)
+                    par_annotateur[annotateur].extend(versions)
     for annotateur, rows in par_annotateur.items():
         contenu = "".join(
             json.dumps(r, ensure_ascii=False) + "\n"
-            for r in sorted(rows, key=lambda r: r["id"])
+            for r in sorted(rows, key=lambda r: (r["id"], r.get("at", 0)))
         )
         api.upload_file(
             path_or_fileobj=contenu.encode("utf-8"),
@@ -170,6 +213,31 @@ def demarrage() -> None:
 
 # ---------------------------------------------------------------- API
 
+def est_retest(chemin: str, annotateur: str) -> bool:
+    """Un extrait déjà corrigé, resservi vierge longtemps après.
+
+    Le tirage est déterministe : le même extrait reste choisi d'une requête à
+    l'autre, sinon il réapparaîtrait corrigé au rechargement de la page.
+    """
+    versions = versions_de(chemin, annotateur)
+    # Une seule reprise suffit à la mesure ; au-delà on ferait retravailler
+    # quelqu'un pour rien.
+    if len(versions) != 1 or not remplie(versions[0]):
+        return False
+    if time.time() * 1000 - versions[0].get("at", 0) < DELAI_RETEST:
+        return False
+    graine = hashlib.blake2b(f"{chemin}|{annotateur}".encode(), digest_size=8).digest()
+    return int.from_bytes(graine, "big") % 1000 < TAUX_RETEST
+
+
+def affichage(chemin: str, annotateur: str) -> tuple[str, str, str]:
+    """Ce que l'annotateur voit : état, correction, notes."""
+    if est_retest(chemin, annotateur):
+        return "todo", "", ""
+    row = mienne(chemin, annotateur)
+    return etat_de(chemin, annotateur), row.get("corrected", ""), row.get("notes", "")
+
+
 def etat_de(chemin: str, annotateur: str) -> str:
     """L'avancement affiché est celui de l'annotateur, pas celui des autres."""
     row = mienne(chemin, annotateur)
@@ -195,10 +263,11 @@ def segments(q: str = "", motif: str = "", etat: str = "tous", annotateur: str =
             continue
         if q and q not in seg.get("t", "").lower() and q not in seg["c"].lower():
             continue
-        if etat != "tous" and etat_de(seg["c"], annotateur) != etat:
+        if etat != "tous" and affichage(seg["c"], annotateur)[0] != etat:
             continue
         trouves.append(seg)
-    page = trouves[offset:offset + limit]
+    page = injecter_temoins(trouves[offset:offset + limit], annotateur, q, motif)
+    vues = {s["c"]: affichage(s["c"], annotateur) for s in page}
     return {
         "total": len(trouves),
         "offset": offset,
@@ -208,31 +277,53 @@ def segments(q: str = "", motif: str = "", etat: str = "tous", annotateur: str =
                 "texte": s.get("t", ""),
                 "motif": s.get("m", ""),
                 "duree": s.get("d", 0),
-                "etat": etat_de(s["c"], annotateur),
-                "correction": mienne(s["c"], annotateur).get("corrected", ""),
-                "notes": mienne(s["c"], annotateur).get("notes", ""),
+                "etat": vues[s["c"]][0],
+                "correction": vues[s["c"]][1],
+                "notes": vues[s["c"]][2],
                 # Le nombre de versions des autres, jamais leur texte : afficher
                 # une correction déjà écrite biaiserait toute mesure d'accord.
-                "autres": sum(1 for a, r in CORRECTIONS.get(s["c"], {}).items()
-                              if a != annotateur and remplie(r)),
+                "autres": sum(1 for a, v in CORRECTIONS.get(s["c"], {}).items()
+                              if a != annotateur and v and remplie(v[-1])),
             }
             for s in page
         ],
     }
 
 
+def injecter_temoins(page: list[dict], annotateur: str, q: str, motif: str) -> list[dict]:
+    """Glisse quelques témoins non encore traités dans la page de résultats.
+
+    Seulement en navigation libre : injectés sous un filtre par motif, ils
+    dépareilleraient et se repéreraient d'un coup d'œil.
+    """
+    if not TEMOINS or q or motif or annotateur == "anonyme":
+        return page
+    deja = {s["c"] for s in page}
+    candidats = [c for c in TEMOINS
+                 if c in PAR_CHEMIN and c not in deja and not versions_de(c, annotateur)]
+    for k, chemin in enumerate(candidats[:2]):
+        page.insert(min(len(page), 3 + 7 * k), SEGMENTS[PAR_CHEMIN[chemin]])
+    return page
+
+
 @app.get("/api/stats")
 def stats():
-    versions = [r for v in CORRECTIONS.values() for r in v.values()]
+    versions = [r for par_ann in CORRECTIONS.values()
+                for liste in par_ann.values() for r in liste]
     return {
         "segments": len(SEGMENTS),
         # Segments couverts au moins une fois, et total des versions : l'écart
         # entre les deux, c'est la double annotation déjà faite.
-        "corriges": sum(1 for v in CORRECTIONS.values() if any(remplie(r) for r in v.values())),
+        "corriges": sum(1 for par_ann in CORRECTIONS.values()
+                        if any(remplie(l[-1]) for l in par_ann.values() if l)),
         "versions": sum(1 for r in versions if remplie(r)),
-        "doubles": sum(1 for v in CORRECTIONS.values()
-                       if sum(1 for r in v.values() if remplie(r)) > 1),
-        "rebuts": sum(1 for v in CORRECTIONS.values() if any(r.get("inutilisable") for r in v.values())),
+        "reprises": sum(len(l) - 1 for par_ann in CORRECTIONS.values()
+                        for l in par_ann.values() if len(l) > 1),
+        "doubles": sum(1 for par_ann in CORRECTIONS.values()
+                       if sum(1 for l in par_ann.values() if l and remplie(l[-1])) > 1),
+        "rebuts": sum(1 for par_ann in CORRECTIONS.values()
+                      if any(l and l[-1].get("inutilisable") for l in par_ann.values())),
+        "temoins": len(TEMOINS),
         "annotateurs": sorted({r["annotateur"] for r in versions}),
         "stockage": ETAT_DISTANT,
         "corpus": CORPUS,
@@ -275,19 +366,19 @@ def export():
     # Une ligne par (segment, annotateur) : c'est ce qui permettra de comparer
     # deux versions du même extrait, donc de mesurer si le travail est bon.
     tampon.write("segment_id,whisper,motif,duree_ms,corrected,notes,annotateur,"
-                 "etat,ecoute_ms,lectures,at\r\n")
+                 "version,etat,ecoute_ms,lectures,at\r\n")
     for ident in sorted(CORRECTIONS):
         seg = SEGMENTS[PAR_CHEMIN[ident]] if ident in PAR_CHEMIN else {}
         for annotateur in sorted(CORRECTIONS[ident]):
-            row = CORRECTIONS[ident][annotateur]
-            cellules = [ident, seg.get("t", ""), seg.get("m", ""), str(seg.get("d", 0)),
-                        row.get("corrected", ""), row.get("notes", ""), annotateur,
-                        etat_de(ident, annotateur), str(row.get("ecoute_ms", 0)),
-                        str(row.get("lectures", 0)), str(row.get("at", ""))]
-            tampon.write(",".join(
-                '"' + c.replace('"', '""') + '"' if any(x in c for x in ',"\r\n') else c
-                for c in cellules
-            ) + "\r\n")
+            for n, row in enumerate(CORRECTIONS[ident][annotateur], 1):
+                cellules = [ident, seg.get("t", ""), seg.get("m", ""), str(seg.get("d", 0)),
+                            row.get("corrected", ""), row.get("notes", ""), annotateur,
+                            str(n), etat_de(ident, annotateur), str(row.get("ecoute_ms", 0)),
+                            str(row.get("lectures", 0)), str(row.get("at", ""))]
+                tampon.write(",".join(
+                    '"' + c.replace('"', '""') + '"' if any(x in c for x in ',"\r\n') else c
+                    for c in cellules
+                ) + "\r\n")
     return PlainTextResponse(
         tampon.getvalue(), media_type="text/csv",
         headers={"Content-Disposition": 'attachment; filename="corrections_gcf.csv"'},

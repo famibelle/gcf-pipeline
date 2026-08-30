@@ -112,8 +112,15 @@ async function chercher(remise){
   total = j.total;
   const arrivants = j.items.filter(it => !DATA.some(d => d.id === it.id));
   DATA = remise ? j.items : DATA.concat(arrivants);
-  // Le serveur connaît les corrections des autres : elles priment sur le vide.
   j.items.forEach(it => {
+    // Le serveur fait autorité sur ce qu'il a déjà accepté. S'il resert un
+    // segment vierge, c'est délibéré : le cache local doit lâcher prise, sans
+    // quoi un brouillon oublié ici réapparaîtrait et fausserait la mesure.
+    if(etat.has(it.id) && !enAttente.has(it.id) && it.etat === "todo"
+       && !it.correction && !it.notes){
+      etat.delete(it.id);
+      ecoute.delete(it.id);
+    }
     if(!etat.has(it.id) && (it.correction || it.notes || it.etat !== "todo"))
       etat.set(it.id, {corrected: it.correction || "", notes: it.notes || "",
                        skipped: it.etat === "skip", inutilisable: it.etat === "rebut"});

@@ -53,6 +53,24 @@ Chaque correction emporte `ecoute_ms` (audio réellement entendu, pas le temps
 passé devant l'écran) et `lectures`, à rapprocher de `duree_ms` : une correction
 écrite sans avoir écouté se repère seule.
 
+Avec deux ou trois annotateurs, personne ne repasse derrière personne et
+l'accord inter-annotateurs est hors de portée. Deux mécanismes le remplacent,
+tous deux invisibles pour l'annotateur :
+
+- **Les témoins.** Des extraits dont la bonne transcription est connue, glissés
+  dans le flux en navigation libre (jamais sous un filtre par motif, où ils
+  dépareilleraient). `scripts/build_temoins.py` les constitue depuis un CSV
+  validé ; le fichier `data/temoins.jsonl` n'est pas versionné.
+- **Le re-test.** Un extrait déjà corrigé, resservi **vierge** après
+  `DELAI_RETEST` (14 jours par défaut) à un taux de `TAUX_RETEST` pour mille.
+  L'écart entre les deux versions mesure l'accord de l'annotateur avec
+  lui-même. Le tirage est déterministe et la reprise n'a lieu qu'une fois.
+
+Les corrections successives d'une même séance se remplacent ; un retour plus
+tard que `DELAI_VERSION` ajoute une version. C'est cet historique que lit
+`scripts/qualite_annotations.py`, qui sort l'écart aux témoins, l'accord avec
+soi-même et les segments à revoir.
+
 Trois issues, et non deux : **corrigé**, **ignoré** (je passe, à reprendre) et
 **inutilisable** (l'extrait ne vaut rien — inaudible, vide, hors sujet).
 Confondre les deux dernières pousserait à inventer une transcription plutôt que
