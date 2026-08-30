@@ -367,6 +367,10 @@ async def enregistrer(request: Request):
                 # Confiance de l'annotateur dans SON texte, de 1 à 5. Une
                 # étoile vaut « inexploitable » ; cinq, « ce texte fait foi ».
                 "note": max(0, min(5, int(row.get("note") or 0))),
+                # Vote : la transcription automatique a été jugée bonne telle
+                # quelle, sans être retapée. À distinguer d'un texte identique
+                # saisi à la main — le geste n'a pas le même coût.
+                "vote": bool(row.get("vote")),
                 # Ouverture, première écoute, première frappe, note, validation.
                 # Ce sont leurs écarts qui informent, pas l'horodatage final.
                 "jalons": {k: int(v) for k, v in (row.get("jalons") or {}).items()
@@ -387,7 +391,7 @@ def export():
     # Une ligne par (segment, annotateur) : c'est ce qui permettra de comparer
     # deux versions du même extrait, donc de mesurer si le travail est bon.
     tampon.write("segment_id,whisper,motif,duree_ms,corrected,notes,annotateur,"
-                 "version,rating,status,ecoute_ms,lectures,"
+                 "version,rating,status,vote,ecoute_ms,lectures,"
                  "ouvert_a,ecoute_a,edite_a,note_a,valide_a\r\n")
     for ident in sorted(CORRECTIONS):
         seg = SEGMENTS[PAR_CHEMIN[ident]] if ident in PAR_CHEMIN else {}
@@ -397,6 +401,7 @@ def export():
                 cellules = [ident, seg.get("t", ""), seg.get("m", ""), str(seg.get("d", 0)),
                             row.get("corrected", ""), row.get("notes", ""), annotateur,
                             str(n), str(row.get("note") or ""), statut(row),
+                            "1" if row.get("vote") else "",
                             str(row.get("ecoute_ms", 0)), str(row.get("lectures", 0))]
                 cellules += [horodatage(j.get(k)) for k in
                              ("ouvert", "ecoute", "edite", "note", "valide")]

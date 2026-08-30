@@ -213,6 +213,8 @@ kbd{
 .etoile-txt[data-note="5"]{color:var(--good);font-weight:500}
 .etoile-txt[data-note="1"]{color:var(--warn)}
 .note-mini{color:var(--warn);font-size:10px;letter-spacing:-1px;margin-left:5px}
+.bon{margin-top:8px;color:var(--good);border-color:var(--good)}
+.bon:hover{background:var(--good-soft)}
 </style>
 </head>
 <body>
@@ -278,6 +280,7 @@ kbd{
         <span class="hint">référence — les mots surlignés sont ceux que tu as changés</span>
       </div>
       <div class="ref kreyol" id="source"></div>
+      <button class="btn bon" id="bon" title="Cette transcription est correcte en gcf">+ Bonne telle quelle</button>
     </div>
 
     <div class="field">
@@ -311,6 +314,7 @@ kbd{
       <span><kbd>Ctrl</kbd>+<kbd>Espace</kbd> réécouter</span>
       <span><kbd>Tab</kbd> accepter la suggestion</span>
       <span><kbd>Alt</kbd>+<kbd>1</kbd>…<kbd>5</kbd> noter la transcription</span>
+      <span><kbd>Alt</kbd>+<kbd>Entrée</kbd> transcription bonne telle quelle</span>
       <span id="mode"></span>
     </div>
   </main>

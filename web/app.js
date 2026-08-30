@@ -26,7 +26,8 @@ const secondes = ms => ms ? (ms / 1000).toFixed(1).replace(".", ",") + " s" : ""
 
 /* ---------- état local ---------- */
 function ligne(id){
-  if(!etat.has(id)) etat.set(id, {corrected: "", notes: "", skipped: false, note: 0, jalons: {}});
+  if(!etat.has(id)) etat.set(id, {corrected: "", notes: "", skipped: false, note: 0,
+                                  vote: false, jalons: {}});
   const s = etat.get(id);
   if(!s.jalons) s.jalons = {};
   return s;
@@ -94,7 +95,7 @@ function ecrireLocal(){
 function persist(id){
   const s = ligne(id), e = compteur(id);
   enAttente.set(id, {id, corrected: s.corrected, notes: s.notes, skipped: s.skipped,
-                     note: s.note, jalons: s.jalons,
+                     note: s.note, vote: !!s.vote, jalons: s.jalons,
                      ecoute_ms: Math.round(e.ms), lectures: e.lectures});
   ecrireLocal();
   el("saved").textContent = "brouillon";
@@ -376,6 +377,7 @@ el("edit").addEventListener("input", e => {
   const d = DATA[active]; if(!d) return;
   const s = ligne(d.id);
   if(e.target.value.trim()) jalon(d.id, "edite");
+  if(e.target.value !== d.texte) s.vote = false;
   s.corrected = e.target.value;
   if(e.target.value.trim()){ s.skipped = false; if(s.note === 1) s.note = 0; }
   persist(d.id); refreshSuggest();
@@ -399,6 +401,24 @@ el("skip").addEventListener("click", () => {
   s.skipped = true; s.note = 0; s.corrected = ""; el("edit").value = "";
   persist(d.id); paint(); renderList(); note("Segment ignoré — à reprendre plus tard");
 });
+/* ---------- vote ---------- */
+function voter(){
+  const d = DATA[active]; if(!d || !d.texte.trim()) return;
+  const s = ligne(d.id);
+  // Le vote dit « rien à corriger » : le texte de Whisper devient la version
+  // validée, en un geste au lieu de trois.
+  s.corrected = d.texte;
+  s.note = 5;
+  s.skipped = false;
+  s.vote = true;
+  el("edit").value = d.texte;
+  jalon(d.id, "edite"); jalon(d.id, "note"); jalon(d.id, "valide");
+  persist(d.id); paint(); renderList();
+  note("Validée telle quelle");
+  nextTodo();
+}
+el("bon").addEventListener("click", voter);
+
 /* ---------- note de confiance ---------- */
 function noter(valeur){
   const d = DATA[active]; if(!d) return;
@@ -592,6 +612,7 @@ document.addEventListener("keydown", e => {
     const first = el("suggest").querySelector(".sug");
     if(first){ e.preventDefault(); acceptSuggestion(first.dataset.word); return; }
   }
+  if(e.altKey && e.key === "Enter"){ e.preventDefault(); voter(); return; }
   if(e.altKey && e.key >= "1" && e.key <= "5"){ e.preventDefault(); noter(Number(e.key)); return; }
   if(e.key === "Enter" && (e.ctrlKey || e.metaKey)){ e.preventDefault(); nextTodo(); return; }
   if(e.altKey && e.key === "ArrowDown"){ e.preventDefault(); go(Math.min(active + 1, DATA.length - 1)); }
@@ -618,7 +639,7 @@ const iso = t => t ? new Date(t).toISOString() : "";
 function csvCell(v){ v = (v == null ? "" : String(v)); return /[",\n\r]/.test(v) ? '"' + v.replace(/"/g, '""') + '"' : v; }
 function telechargerCsv(){
   const tete = ["segment_id", "whisper", "motif", "duree_ms", "corrected", "notes",
-                "annotateur", "rating", "status", "ecoute_ms", "lectures",
+                "annotateur", "rating", "status", "vote", "ecoute_ms", "lectures",
                 "ouvert_a", "ecoute_a", "edite_a", "note_a", "valide_a"];
   const lignes = [tete.join(",")];
   CATALOGUE.forEach(s => {
@@ -627,7 +648,7 @@ function telechargerCsv(){
     const c = ecoute.get(s.c) || {ms: 0, lectures: 0};
     const j = e.jalons || {};
     lignes.push([s.c, s.t, s.m, s.d, e.corrected, e.notes, annotateur, e.note || "",
-                 statut(e), Math.round(c.ms), c.lectures,
+                 statut(e), e.vote ? "1" : "", Math.round(c.ms), c.lectures,
                  iso(j.ouvert), iso(j.ecoute), iso(j.edite), iso(j.note), iso(j.valide)]
                 .map(csvCell).join(","));
   });

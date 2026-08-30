@@ -48,6 +48,8 @@ CSS = """
 .etoile-txt[data-note="5"]{color:var(--good);font-weight:500}
 .etoile-txt[data-note="1"]{color:var(--warn)}
 .note-mini{color:var(--warn);font-size:10px;letter-spacing:-1px;margin-left:5px}
+.bon{margin-top:8px;color:var(--good);border-color:var(--good)}
+.bon:hover{background:var(--good-soft)}
 </style>"""
 
 FILTRES = """<div class="qbox">
@@ -105,6 +107,13 @@ def gabarit_commun() -> str:
     # Plus de « pré-correction » : le corpus n'en a pas, seule la sortie Whisper existe.
     src = src.replace('<button class="btn" id="fill">Partir de la pré-correction</button>\n        ', '')
     src = src.replace('id="copysrc">Copier la source', 'id="copysrc">Reprendre la transcription')
+    # Un vote, rien de plus : la transcription affichée est bonne telle quelle.
+    # Trois gestes — reprendre, noter, valider — deviennent un.
+    src = src.replace(
+        '<div class="ref kreyol" id="source"></div>',
+        '<div class="ref kreyol" id="source"></div>\n'
+        '      <button class="btn bon" id="bon" title="Cette transcription est correcte en gcf">'
+        '+ Bonne telle quelle</button>')
     # Distinguer « je passe » de « cet extrait ne vaut rien » : sans cette
     # sortie, on écrit n'importe quoi plutôt que de laisser un blanc.
     # La note de confiance s'intercale entre la saisie et les actions : on la
@@ -115,7 +124,8 @@ def gabarit_commun() -> str:
     src = src.replace(
         '<span><kbd>Tab</kbd> accepter la suggestion</span>',
         '<span><kbd>Tab</kbd> accepter la suggestion</span>\n'
-        '      <span><kbd>Alt</kbd>+<kbd>1</kbd>…<kbd>5</kbd> noter la transcription</span>')
+        '      <span><kbd>Alt</kbd>+<kbd>1</kbd>…<kbd>5</kbd> noter la transcription</span>\n'
+        '      <span><kbd>Alt</kbd>+<kbd>Entrée</kbd> transcription bonne telle quelle</span>')
     return src
 
 
