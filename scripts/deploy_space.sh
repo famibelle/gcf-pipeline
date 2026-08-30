@@ -13,6 +13,7 @@ VISIBILITE="prive"
 mkdir -p space/static/assets
 cp -r docs/assets/kreyol space/static/assets/
 
+.venv/bin/python scripts/build_pages.py
 .venv/bin/python scripts/build_space_index.py
 .venv/bin/python - "$SPACE" "$VISIBILITE" <<'PY'
 import os, sys

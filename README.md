@@ -68,6 +68,36 @@ src/report.py               rapport.md
 data/seed_rules_ht2gcf.json règles amorces (hypothèses, à valider)
 ```
 
+## Interface d'annotation
+
+Le corpus fait 2,3 Go et reste sous accès contrôlé : ni le dépôt ni un visiteur
+non connecté ne peuvent l'atteindre. La page d'annotation travaille donc sur un
+**lot** construit à l'avance — les segments que la passe Whisper a écartés
+d'abord, ce sont eux qui méritent un humain — transcodés en mono 32 kbps.
+
+```bash
+scripts/build_space_index.py            # index des segments depuis la passe
+scripts/build_pages_lot.py --max 500    # télécharge, transcode, écrit le lot
+scripts/build_pages.py                  # régénère les interfaces
+```
+
+Le jeton Hugging Face n'intervient qu'à la construction ; rien de gaté ne
+descend dans la page publiée. Les 500 premiers rejets pèsent 8 Mo pour 33
+minutes d'audio, et `?lot=<nom>` bascule d'un lot à l'autre.
+
+L'interface vit dans `web/` — `annotation.html` pour la structure et le CSS,
+`app.js` pour la logique — et `scripts/build_pages.py` en tire deux
+hébergements depuis ce seul gabarit :
+
+| | `docs/` (GitHub Pages) | `space/` (Space Hugging Face) |
+|---|---|---|
+| Segments | un lot publié | les 40 333, par une API |
+| Audio | fichiers du dépôt | relayé, jeton côté serveur |
+| Corrections | ce navigateur, export CSV | dataset partagé |
+
+Le Space est prêt mais pas déployé : il demande un jeton *write*, là où la page
+statique se contente du jeton de lecture déjà en place.
+
 ## Tests
 
 ```bash

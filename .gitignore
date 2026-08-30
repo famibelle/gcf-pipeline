@@ -57,3 +57,5 @@ space/data/index.jsonl
 space/static/assets/
 # Témoins du Space : reconstruits par scripts/build_temoins.py
 space/data/temoins.jsonl
+# Interface du Space : régénérée par scripts/build_pages.py au déploiement
+space/static/app.js

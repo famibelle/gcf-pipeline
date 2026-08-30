@@ -1,5 +1,6 @@
-<!-- Dérivée de docs/index.html : même CSS, même ergonomie.
-     La logique vit dans app.js, éditable à la main. -->
+<!-- Gabarit de l'interface d'annotation : structure et CSS seulement.
+     scripts/build_pages.py en tire docs/index.html (GitHub Pages) et
+     space/static/index.html (Space Hugging Face). La logique est dans web/app.js. -->
 <!doctype html>
 <html lang="fr">
 <head>
@@ -182,7 +183,7 @@ kbd{
   .pane{padding:18px 16px 70px}
 }
 
-/* --- ajouts du Space : recherche, motifs, pagination --- */
+/* --- recherche, motifs, pagination --- */
 .qbox{display:flex;gap:6px;margin-bottom:8px}
 .qbox input{flex:1;min-width:0;padding:7px 9px;border:1px solid var(--line);border-radius:8px;
   background:var(--surface);color:var(--ink);font:inherit;font-size:13px}
@@ -208,7 +209,7 @@ kbd{
 <header class="top">
   <div class="brand">
     <h1>Annotation Kreyòl GCF</h1>
-    <div class="sub" id="sub">chargement du corpus…</div>
+    <div class="sub" id="sub">chargement…</div>
   </div>
   <div class="meter">
     <div class="bar"><i id="bar" style="width:0%"></i></div>
@@ -300,6 +301,7 @@ kbd{
 <div class="toast" id="toast" role="status" aria-live="polite"></div>
 
 <script src="assets/kreyol/simulateur-engine.js"></script>
+<script>window.GCF_MODE = "serveur";</script>
 <script src="app.js"></script>
 </body>
 </html>
