@@ -26,21 +26,40 @@ const secondes = ms => ms ? (ms / 1000).toFixed(1).replace(".", ",") + " s" : ""
 
 /* ---------- état local ---------- */
 function ligne(id){
-  if(!etat.has(id)) etat.set(id, {corrected: "", notes: "", skipped: false, inutilisable: false});
-  return etat.get(id);
+  if(!etat.has(id)) etat.set(id, {corrected: "", notes: "", skipped: false, note: 0, jalons: {}});
+  const s = etat.get(id);
+  if(!s.jalons) s.jalons = {};
+  return s;
+}
+/* Un jalon ne se pose qu'une fois : c'est la première occurrence qui informe.
+   Ouverture, première écoute, première frappe, note, validation — leurs écarts
+   disent le soin pris, là où un seul horodatage de fin ne dit rien. */
+function jalon(id, nom){
+  const j = ligne(id).jalons;
+  if(!j[nom]){ j[nom] = Date.now(); return true; }
+  return false;
 }
 function travail(id){
   const s = etat.get(id);
-  return !!s && (s.corrected.trim() || s.skipped || s.inutilisable);
+  return !!s && (s.corrected.trim() || s.skipped || s.note > 0);
 }
 function stateOf(i){
   const s = etat.get(DATA[i].id);
   if(!s) return DATA[i].etat || "todo";
-  if(s.inutilisable) return "rebut";
+  // Une étoile vaut « inexploitable » : la note absorbe l'ancien bouton.
+  if(s.note === 1) return "rebut";
   if(s.skipped) return "skip";
   return s.corrected.trim() ? "done" : "todo";
 }
-const LABEL = {todo: "à faire", done: "corrigé", skip: "ignoré", rebut: "inutilisable"};
+const LABEL = {todo: "à faire", done: "corrigé", skip: "ignoré", rebut: "inexploitable"};
+const ANCRAGES = {
+  0: "non notée",
+  1: "inexploitable",
+  2: "deviné, des passages résistent",
+  3: "sens bon, orthographe incertaine",
+  4: "correct, un doute ponctuel",
+  5: "gcf validé — fait foi",
+};
 
 /* ---------- écoute réelle ----------
    Compte les secondes d'audio effectivement entendues, pas le temps passé
@@ -57,7 +76,8 @@ function lireLocal(){
     if(!brut) return;
     const j = JSON.parse(brut);
     (j.rows || []).forEach(r => etat.set(r.id, {corrected: r.corrected || "", notes: r.notes || "",
-                                                skipped: !!r.skipped, inutilisable: !!r.inutilisable}));
+                                                skipped: !!r.skipped, note: r.note || 0,
+                                                jalons: r.jalons || {}}));
     (j.ecoute || []).forEach(([id, c]) => ecoute.set(id, c));
     (j.attente || []).forEach(r => enAttente.set(r.id, r));
   }catch(e){}
@@ -74,7 +94,8 @@ function ecrireLocal(){
 function persist(id){
   const s = ligne(id), e = compteur(id);
   enAttente.set(id, {id, corrected: s.corrected, notes: s.notes, skipped: s.skipped,
-                     inutilisable: s.inutilisable, ecoute_ms: Math.round(e.ms), lectures: e.lectures});
+                     note: s.note, jalons: s.jalons,
+                     ecoute_ms: Math.round(e.ms), lectures: e.lectures});
   ecrireLocal();
   el("saved").textContent = "brouillon";
   clearTimeout(envoiTimer);
@@ -125,7 +146,7 @@ function filtrerLocal(){
 function etatDe(id){
   const s = etat.get(id);
   if(!s) return "todo";
-  if(s.inutilisable) return "rebut";
+  if(s.note === 1) return "rebut";
   if(s.skipped) return "skip";
   return s.corrected.trim() ? "done" : "todo";
 }
@@ -161,7 +182,7 @@ async function chercher(remise){
     }
     if(!etat.has(it.id) && (it.correction || it.notes || it.etat !== "todo"))
       etat.set(it.id, {corrected: it.correction || "", notes: it.notes || "",
-                       skipped: it.etat === "skip", inutilisable: it.etat === "rebut"});
+                       skipped: it.etat === "skip", note: it.note || 0, jalons: {}});
   });
   el("trouves").textContent = total.toLocaleString("fr-FR") + " segment" + (total > 1 ? "s" : "")
     + (DATA.length < total ? ` · ${DATA.length} affichés` : "");
@@ -205,8 +226,13 @@ function renderList(){
       m.className = "motif"; m.dataset.m = d.motif; m.textContent = d.motif;
       id.appendChild(m);
     }
-    const tx = document.createElement("span"); tx.className = "txt kreyol";
     const s = etat.get(d.id);
+    if(s && s.note){
+      const n = document.createElement("span");
+      n.className = "note-mini"; n.textContent = "★".repeat(s.note);
+      id.appendChild(n);
+    }
+    const tx = document.createElement("span"); tx.className = "txt kreyol";
     tx.textContent = (s && s.corrected.trim()) || d.texte || "—";
     box.appendChild(id); box.appendChild(document.createElement("br")); box.appendChild(tx);
     b.appendChild(dot); b.appendChild(box);
@@ -291,6 +317,7 @@ function go(i){
   if(precedent && i !== active && travail(precedent.id)) persist(precedent.id);
   active = i;
   dernierTemps = 0;
+  jalon(DATA[i].id, "ouvert");
   const d = DATA[i], s = ligne(d.id);
   el("segid").textContent = court(d.id) + " · " + (i + 1) + "/" + DATA.length
     + (d.duree ? " · " + secondes(d.duree) : "");
@@ -314,6 +341,7 @@ function paint(){
   const marked = diffMark(d.texte, s.corrected);
   if(typeof marked === "string") src.textContent = marked; else src.replaceChildren(marked);
   const tag = el("segtag"); tag.className = "tag " + st; tag.textContent = LABEL[st];
+  peindreEtoiles();
   el("count").textContent = stats.corriges.toLocaleString("fr-FR") + " / " + stats.segments.toLocaleString("fr-FR");
   el("bar").style.width = (stats.segments ? 100 * stats.corriges / stats.segments : 0).toFixed(2) + "%";
 }
@@ -347,8 +375,9 @@ async function majStats(){
 el("edit").addEventListener("input", e => {
   const d = DATA[active]; if(!d) return;
   const s = ligne(d.id);
+  if(e.target.value.trim()) jalon(d.id, "edite");
   s.corrected = e.target.value;
-  if(e.target.value.trim()){ s.skipped = false; s.inutilisable = false; }
+  if(e.target.value.trim()){ s.skipped = false; if(s.note === 1) s.note = 0; }
   persist(d.id); refreshSuggest();
   clearTimeout(paintTimer); paintTimer = setTimeout(() => { paint(); renderList(); }, 220);
 });
@@ -359,25 +388,58 @@ el("notes").addEventListener("input", e => {
 el("copysrc").addEventListener("click", () => {
   const d = DATA[active]; if(!d) return;
   const s = ligne(d.id);
-  el("edit").value = d.texte; s.corrected = d.texte; s.skipped = false; s.inutilisable = false;
+  el("edit").value = d.texte; s.corrected = d.texte; s.skipped = false;
+  if(s.note === 1) s.note = 0;
+  jalon(d.id, "edite");
   persist(d.id); paint(); renderList(); el("edit").focus();
 });
 el("skip").addEventListener("click", () => {
   const d = DATA[active]; if(!d) return;
   const s = ligne(d.id);
-  s.skipped = true; s.inutilisable = false; s.corrected = ""; el("edit").value = "";
+  s.skipped = true; s.note = 0; s.corrected = ""; el("edit").value = "";
   persist(d.id); paint(); renderList(); note("Segment ignoré — à reprendre plus tard");
 });
-el("rebut").addEventListener("click", () => {
+/* ---------- note de confiance ---------- */
+function noter(valeur){
   const d = DATA[active]; if(!d) return;
   const s = ligne(d.id);
-  // Juger l'extrait, pas soi-même : inaudible, vide, hors sujet. Sans cette
-  // sortie, on écrit n'importe quoi pour ne pas laisser un blanc.
-  s.inutilisable = true; s.skipped = false; s.corrected = ""; el("edit").value = "";
-  persist(d.id); paint(); renderList(); note("Marqué inutilisable — il ne partira pas dans le corpus");
+  s.note = s.note === valeur ? 0 : valeur;   // recliquer la même étoile l'annule
+  if(s.note){
+    jalon(d.id, "note");
+    s.skipped = false;
+    // Une étoile juge l'extrait inexploitable : le texte n'a plus lieu d'être.
+    if(s.note === 1){ s.corrected = ""; el("edit").value = ""; }
+  }
+  persist(d.id); paint(); renderList();
+}
+el("etoiles").addEventListener("click", e => {
+  const b = e.target.closest(".etoile");
+  if(b) noter(Number(b.dataset.note));
 });
+function peindreEtoiles(){
+  const d = DATA[active];
+  const valeur = d ? ligne(d.id).note : 0;
+  document.querySelectorAll(".etoile").forEach(b => {
+    b.dataset.on = Number(b.dataset.note) <= valeur ? "1" : "0";
+  });
+  const txt = el("etoile-txt");
+  txt.textContent = ANCRAGES[valeur];
+  txt.dataset.note = valeur;
+}
 el("next").addEventListener("click", () => nextTodo());
 function nextTodo(){
+  const d = DATA[active];
+  if(d){
+    const s = ligne(d.id);
+    // Ne rien pré-remplir : une étoile par défaut serait l'inflation même.
+    if(s.corrected.trim() && !s.note){
+      note("Note la transcription — Alt+1 à Alt+5");
+      el("etoiles").querySelector('[data-note="5"]').focus();
+      return;
+    }
+    jalon(d.id, "valide");
+    if(travail(d.id)) persist(d.id);
+  }
   for(let k = 1; k <= DATA.length; k++){
     const i = (active + k) % DATA.length;
     if(stateOf(i) === "todo"){ go(i); el("edit").focus(); return; }
@@ -397,7 +459,7 @@ let dernierTemps = 0;
 audio.addEventListener("play", () => {
   setIcon(true);
   const d = DATA[active];
-  if(d) compteur(d.id).lectures++;
+  if(d){ compteur(d.id).lectures++; jalon(d.id, "ecoute"); }
   dernierTemps = audio.currentTime;
 });
 audio.addEventListener("pause", () => setIcon(false));
@@ -505,7 +567,7 @@ function acceptSuggestion(word){
   const d = DATA[active]; if(!d) return;
   const s = ligne(d.id);
   s.corrected = ta.value;
-  if(ta.value.trim()){ s.skipped = false; s.inutilisable = false; }
+  if(ta.value.trim()){ s.skipped = false; if(s.note === 1) s.note = 0; jalon(d.id, "edite"); }
   persist(d.id); paint(); renderList(); refreshSuggest();
 }
 el("suggest").addEventListener("click", e => {
@@ -530,6 +592,7 @@ document.addEventListener("keydown", e => {
     const first = el("suggest").querySelector(".sug");
     if(first){ e.preventDefault(); acceptSuggestion(first.dataset.word); return; }
   }
+  if(e.altKey && e.key >= "1" && e.key <= "5"){ e.preventDefault(); noter(Number(e.key)); return; }
   if(e.key === "Enter" && (e.ctrlKey || e.metaKey)){ e.preventDefault(); nextTodo(); return; }
   if(e.altKey && e.key === "ArrowDown"){ e.preventDefault(); go(Math.min(active + 1, DATA.length - 1)); }
   if(e.altKey && e.key === "ArrowUp"){ e.preventDefault(); go(Math.max(active - 1, 0)); }
@@ -543,17 +606,30 @@ el("theme").addEventListener("click", () => {
 });
 
 /* ---------- export CSV (mode statique) ---------- */
+/* Le statut n'est pas stocké : il se déduit de la note, seule source de
+   vérité. Deux colonnes qui se contredisent, c'est une de trop. */
+function statut(e){
+  if(e.note === 5) return "human_validated";
+  if(e.note === 1) return "unusable";
+  if(e.note) return "human_reviewed";
+  return e.corrected.trim() ? "draft" : "";
+}
+const iso = t => t ? new Date(t).toISOString() : "";
 function csvCell(v){ v = (v == null ? "" : String(v)); return /[",\n\r]/.test(v) ? '"' + v.replace(/"/g, '""') + '"' : v; }
 function telechargerCsv(){
   const tete = ["segment_id", "whisper", "motif", "duree_ms", "corrected", "notes",
-                "annotateur", "etat", "ecoute_ms", "lectures"];
+                "annotateur", "rating", "status", "ecoute_ms", "lectures",
+                "ouvert_a", "ecoute_a", "edite_a", "note_a", "valide_a"];
   const lignes = [tete.join(",")];
   CATALOGUE.forEach(s => {
     const e = etat.get(s.c);
-    if(!e || !(e.corrected.trim() || e.skipped || e.inutilisable)) return;
+    if(!e || !(e.corrected.trim() || e.skipped || e.note)) return;
     const c = ecoute.get(s.c) || {ms: 0, lectures: 0};
-    lignes.push([s.c, s.t, s.m, s.d, e.corrected, e.notes, annotateur, etatDe(s.c),
-                 Math.round(c.ms), c.lectures].map(csvCell).join(","));
+    const j = e.jalons || {};
+    lignes.push([s.c, s.t, s.m, s.d, e.corrected, e.notes, annotateur, e.note || "",
+                 statut(e), Math.round(c.ms), c.lectures,
+                 iso(j.ouvert), iso(j.ecoute), iso(j.edite), iso(j.note), iso(j.valide)]
+                .map(csvCell).join(","));
   });
   if(lignes.length === 1){ note("Rien à exporter pour l'instant"); return; }
   const csv = lignes.join("\r\n") + "\r\n";

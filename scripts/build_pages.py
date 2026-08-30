@@ -35,9 +35,19 @@ CSS = """
 .qui{padding:5px 8px;border:1px solid var(--line);border-radius:8px;background:var(--surface);
   color:var(--ink);font:inherit;font-size:12px;width:120px}
 .vide{padding:24px 8px;color:var(--ink-3);font-size:13px;text-align:center}
-/* « Inutilisable » juge l'extrait, « ignoré » juge le moment : deux couleurs. */
+/* ★ vaut jugement sur l'extrait, « ignoré » sur le moment : deux couleurs. */
 .tag.rebut{background:var(--warn-soft);color:var(--warn)}
 .row[data-state="rebut"] .dot{background:var(--warn);border-radius:2px}
+/* --- note de confiance --- */
+.etoiles{display:flex;align-items:center;gap:2px;margin:10px 0 2px}
+.etoile{background:none;border:0;padding:2px 1px;font-size:19px;line-height:1;cursor:pointer;
+  color:var(--line-2);transition:color .12s}
+.etoile:hover,.etoile[data-on="1"]{color:var(--warn)}
+.etoile:focus-visible{outline:2px solid var(--accent);outline-offset:2px;border-radius:4px}
+.etoile-txt{margin-left:8px;color:var(--ink-3);font-size:12px}
+.etoile-txt[data-note="5"]{color:var(--good);font-weight:500}
+.etoile-txt[data-note="1"]{color:var(--warn)}
+.note-mini{color:var(--warn);font-size:10px;letter-spacing:-1px;margin-left:5px}
 </style>"""
 
 FILTRES = """<div class="qbox">
@@ -55,6 +65,24 @@ FILTRES = """<div class="qbox">
     </div>
     <div class="meta"><span id="trouves">…</span><span id="stockage"></span></div>
     """
+
+
+# L'ancrage verbal fait tout le travail : une échelle 1-5 sans libellés
+# s'effondre vers « 5 ou 1 », et deux annotateurs n'y mettent pas la même chose.
+ANCRAGES = [
+    (1, "inexploitable — audio inaudible, rien à en tirer"),
+    (2, "j'ai deviné, plusieurs passages me résistent"),
+    (3, "le sens est bon, l'orthographe gcf reste incertaine"),
+    (4, "correct, un doute ponctuel — un mot, un accent"),
+    (5, "je réponds de ce texte : gcf validé, il fait foi"),
+]
+ETOILES = ('      <div class="etoiles" id="etoiles" role="radiogroup" '
+           'aria-label="Confiance dans la transcription">\n'
+           + "".join(f'        <button type="button" class="etoile" data-note="{n}" '
+                     f'aria-label="{n} sur 5 — {t}" title="{n} ★ — {t}">★</button>\n'
+                     for n, t in ANCRAGES)
+           + '        <span class="etoile-txt" id="etoile-txt">non notée</span>\n'
+             '      </div>\n')
 
 
 def gabarit_commun() -> str:
@@ -79,10 +107,15 @@ def gabarit_commun() -> str:
     src = src.replace('id="copysrc">Copier la source', 'id="copysrc">Reprendre la transcription')
     # Distinguer « je passe » de « cet extrait ne vaut rien » : sans cette
     # sortie, on écrit n'importe quoi plutôt que de laisser un blanc.
+    # La note de confiance s'intercale entre la saisie et les actions : on la
+    # pose après avoir écrit, avant de valider.
     src = src.replace(
-        '<button class="btn" id="skip">Ignorer ce segment</button>',
-        '<button class="btn" id="skip">Ignorer ce segment</button>\n'
-        '        <button class="btn" id="rebut" title="Inaudible, vide ou hors sujet">Inutilisable</button>')
+        '      <div class="actions">',
+        ETOILES + '      <div class="actions">')
+    src = src.replace(
+        '<span><kbd>Tab</kbd> accepter la suggestion</span>',
+        '<span><kbd>Tab</kbd> accepter la suggestion</span>\n'
+        '      <span><kbd>Alt</kbd>+<kbd>1</kbd>…<kbd>5</kbd> noter la transcription</span>')
     return src
 
 

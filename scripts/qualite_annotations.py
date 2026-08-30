@@ -110,6 +110,10 @@ def drapeaux(row: dict, seg: dict, lexique: set[str]) -> list[str]:
     marques = []
     duree, ecoute = seg.get("d", 0), row.get("ecoute_ms", 0)
     lectures = row.get("lectures", 0)
+    # L'inflation de notes est le seul travers que la note elle-même ne dit
+    # pas : cinq étoiles sur un extrait qu'on n'a pas écouté ne valent rien.
+    if (row.get("note") or 0) == 5 and duree and (not lectures or ecoute < 0.5 * duree):
+        marques.append("5 étoiles sans avoir écouté")
 
     if lectures == 0:
         marques.append("jamais écouté")
@@ -175,10 +179,16 @@ def main() -> int:
         seg = index.get(ident, {})
         stat = par_annotateur.setdefault(annotateur, {
             "corrections": 0, "rebuts": 0, "ecoute": [], "reprises": [], "temoins": [],
+            "notes": [], "validees": 0,
         })
         derniere = liste[-1]
-        if derniere.get("inutilisable"):
+        note = derniere.get("note") or 0
+        if note:
+            stat["notes"].append(note)
+        if note == 1:
             stat["rebuts"] += 1
+        if note == 5:
+            stat["validees"] += 1
         if not (derniere.get("corrected") or "").strip():
             continue
         stat["corrections"] += 1
@@ -196,20 +206,24 @@ def main() -> int:
                 "drapeaux": " ; ".join(marques),
                 "whisper": seg.get("t", ""), "correction": derniere["corrected"],
                 "duree_ms": seg.get("d", 0), "ecoute_ms": derniere.get("ecoute_ms", 0),
-                "lectures": derniere.get("lectures", 0),
+                "lectures": derniere.get("lectures", 0), "rating": note,
             })
 
     largeur = max([10] + [len(a) for a in par_annotateur])
-    print(f"\n  {'annotateur'.ljust(largeur)}  corrigés  rebuts   écoute   reprises            témoins")
-    print(f"  {'-' * largeur}  --------  ------   ------   -----------------   -----------------")
+    print(f"\n  {'annotateur'.ljust(largeur)}  corrigés  ★ méd.  ★★★★★  1★   écoute   "
+          f"reprises            témoins")
+    print(f"  {'-' * largeur}  --------  ------  -----  --   ------   "
+          f"-----------------   -----------------")
     for annotateur, s in sorted(par_annotateur.items()):
-        rep = mediane(s["reprises"])
-        tem = mediane(s["temoins"])
-        print(f"  {annotateur.ljust(largeur)}  {s['corrections']:>8}  {s['rebuts']:>6}   "
+        note = mediane(s["notes"])
+        print(f"  {annotateur.ljust(largeur)}  {s['corrections']:>8}  "
+              f"{(f'{float(note):.1f}' if s['notes'] else '—'):>6}  "
+              f"{s['validees']:>5}  {s['rebuts']:>2}   "
               f"{pourcent(mediane(s['ecoute'])):>6}   "
-              f"{pourcent(rep):>7} ({len(s['reprises']):>2} mesuré)   "
-              f"{pourcent(tem):>7} ({len(s['temoins']):>2} mesuré)")
-    print("\n  écoute   : audio entendu rapporté à la durée (médiane) — 100 % = l'extrait entier,")
+              f"{pourcent(mediane(s['reprises'])):>7} ({len(s['reprises']):>2} mesuré)   "
+              f"{pourcent(mediane(s['temoins'])):>7} ({len(s['temoins']):>2} mesuré)")
+    print("\n  ★ méd.   : confiance médiane déclarée ; ★★★★★ = textes qui font foi, 1★ = inexploitables")
+    print("  écoute   : audio entendu rapporté à la durée (médiane) — 100 % = l'extrait entier,")
     print("             au-delà, il a été réécouté ; bien en deçà, il ne l'a pas été")
     print("  reprises : écart entre deux passages du même annotateur — plus c'est bas, plus c'est reproductible")
     print("  témoins  : écart à une transcription connue — la seule mesure absolue")

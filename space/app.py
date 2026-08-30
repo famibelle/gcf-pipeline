@@ -12,6 +12,7 @@ import json
 import os
 import threading
 import time
+from datetime import datetime, timezone
 from io import StringIO
 from pathlib import Path
 from urllib.parse import quote
@@ -127,6 +128,19 @@ def remplie(row: dict) -> bool:
     return bool((row.get("corrected") or "").strip())
 
 
+def statut(row: dict) -> str:
+    """Déduit de la note, jamais stocké : deux colonnes qui se contredisent,
+    c'en est une de trop. Cinq étoiles, et le texte fait foi."""
+    note = row.get("note") or 0
+    if note == 5:
+        return "human_validated"
+    if note == 1:
+        return "unusable"
+    if note:
+        return "human_reviewed"
+    return "draft" if remplie(row) else ""
+
+
 def charger_corrections() -> None:
     global ETAT_DISTANT
     if not JETON:
@@ -230,12 +244,13 @@ def est_retest(chemin: str, annotateur: str) -> bool:
     return int.from_bytes(graine, "big") % 1000 < TAUX_RETEST
 
 
-def affichage(chemin: str, annotateur: str) -> tuple[str, str, str]:
-    """Ce que l'annotateur voit : état, correction, notes."""
+def affichage(chemin: str, annotateur: str) -> tuple[str, str, str, int]:
+    """Ce que l'annotateur voit : état, correction, notes, note de confiance."""
     if est_retest(chemin, annotateur):
-        return "todo", "", ""
+        return "todo", "", "", 0
     row = mienne(chemin, annotateur)
-    return etat_de(chemin, annotateur), row.get("corrected", ""), row.get("notes", "")
+    return (etat_de(chemin, annotateur), row.get("corrected", ""),
+            row.get("notes", ""), row.get("note") or 0)
 
 
 def etat_de(chemin: str, annotateur: str) -> str:
@@ -243,7 +258,7 @@ def etat_de(chemin: str, annotateur: str) -> str:
     row = mienne(chemin, annotateur)
     if not row:
         return "todo"
-    if row.get("inutilisable"):
+    if (row.get("note") or 0) == 1:
         return "rebut"
     if row.get("skipped"):
         return "skip"
@@ -280,6 +295,7 @@ def segments(q: str = "", motif: str = "", etat: str = "tous", annotateur: str =
                 "etat": vues[s["c"]][0],
                 "correction": vues[s["c"]][1],
                 "notes": vues[s["c"]][2],
+                "note": vues[s["c"]][3],
                 # Le nombre de versions des autres, jamais leur texte : afficher
                 # une correction déjà écrite biaiserait toute mesure d'accord.
                 "autres": sum(1 for a, v in CORRECTIONS.get(s["c"], {}).items()
@@ -321,8 +337,10 @@ def stats():
                         for l in par_ann.values() if len(l) > 1),
         "doubles": sum(1 for par_ann in CORRECTIONS.values()
                        if sum(1 for l in par_ann.values() if l and remplie(l[-1])) > 1),
+        "validees": sum(1 for par_ann in CORRECTIONS.values()
+                        if any(l and (l[-1].get("note") or 0) == 5 for l in par_ann.values())),
         "rebuts": sum(1 for par_ann in CORRECTIONS.values()
-                      if any(l and l[-1].get("inutilisable") for l in par_ann.values())),
+                      if any(l and (l[-1].get("note") or 0) == 1 for l in par_ann.values())),
         "temoins": len(TEMOINS),
         "annotateurs": sorted({r["annotateur"] for r in versions}),
         "stockage": ETAT_DISTANT,
@@ -346,10 +364,13 @@ async def enregistrer(request: Request):
                 "corrected": row.get("corrected", ""),
                 "notes": row.get("notes", ""),
                 "skipped": bool(row.get("skipped")),
-                # « Inutilisable » n'est pas « ignoré » : le premier juge
-                # l'extrait, le second l'annotateur. Les confondre pousserait à
-                # inventer une transcription plutôt qu'à laisser un blanc.
-                "inutilisable": bool(row.get("inutilisable")),
+                # Confiance de l'annotateur dans SON texte, de 1 à 5. Une
+                # étoile vaut « inexploitable » ; cinq, « ce texte fait foi ».
+                "note": max(0, min(5, int(row.get("note") or 0))),
+                # Ouverture, première écoute, première frappe, note, validation.
+                # Ce sont leurs écarts qui informent, pas l'horodatage final.
+                "jalons": {k: int(v) for k, v in (row.get("jalons") or {}).items()
+                           if str(k).isalpha() and str(v).isdigit()},
                 # De quoi repérer une correction écrite sans avoir écouté.
                 "ecoute_ms": int(row.get("ecoute_ms") or 0),
                 "lectures": int(row.get("lectures") or 0),
@@ -366,15 +387,19 @@ def export():
     # Une ligne par (segment, annotateur) : c'est ce qui permettra de comparer
     # deux versions du même extrait, donc de mesurer si le travail est bon.
     tampon.write("segment_id,whisper,motif,duree_ms,corrected,notes,annotateur,"
-                 "version,etat,ecoute_ms,lectures,at\r\n")
+                 "version,rating,status,ecoute_ms,lectures,"
+                 "ouvert_a,ecoute_a,edite_a,note_a,valide_a\r\n")
     for ident in sorted(CORRECTIONS):
         seg = SEGMENTS[PAR_CHEMIN[ident]] if ident in PAR_CHEMIN else {}
         for annotateur in sorted(CORRECTIONS[ident]):
             for n, row in enumerate(CORRECTIONS[ident][annotateur], 1):
+                j = row.get("jalons") or {}
                 cellules = [ident, seg.get("t", ""), seg.get("m", ""), str(seg.get("d", 0)),
                             row.get("corrected", ""), row.get("notes", ""), annotateur,
-                            str(n), etat_de(ident, annotateur), str(row.get("ecoute_ms", 0)),
-                            str(row.get("lectures", 0)), str(row.get("at", ""))]
+                            str(n), str(row.get("note") or ""), statut(row),
+                            str(row.get("ecoute_ms", 0)), str(row.get("lectures", 0))]
+                cellules += [horodatage(j.get(k)) for k in
+                             ("ouvert", "ecoute", "edite", "note", "valide")]
                 tampon.write(",".join(
                     '"' + c.replace('"', '""') + '"' if any(x in c for x in ',"\r\n') else c
                     for c in cellules
@@ -386,6 +411,11 @@ def export():
 
 
 # ---------------------------------------------------------------- audio
+
+def horodatage(ms) -> str:
+    return (datetime.fromtimestamp(int(ms) / 1000, tz=timezone.utc).isoformat()
+            if ms else "")
+
 
 RELAYES = ("content-type", "content-length", "content-range", "accept-ranges", "etag")
 
