@@ -436,16 +436,28 @@ el("etoiles").addEventListener("click", e => {
   const b = e.target.closest(".etoile");
   if(b) noter(Number(b.dataset.note));
 });
-function peindreEtoiles(){
-  const d = DATA[active];
-  const valeur = d ? ligne(d.id).note : 0;
+function peindreEtoiles(valeur, apercu){
+  if(valeur === undefined){
+    const d = DATA[active];
+    valeur = d ? ligne(d.id).note : 0;
+  }
+  // Silhouette tant que rien n'est estimé, pleine dès la première étoile :
+  // l'absence de note se voit d'un coup d'œil, sans la confondre avec un 1.
   document.querySelectorAll(".etoile").forEach(b => {
-    b.dataset.on = Number(b.dataset.note) <= valeur ? "1" : "0";
+    const pleine = Number(b.dataset.note) <= valeur;
+    b.dataset.on = pleine ? "1" : "0";
+    b.textContent = pleine ? "★" : "☆";
   });
   const txt = el("etoile-txt");
   txt.textContent = ANCRAGES[valeur];
-  txt.dataset.note = valeur;
+  txt.dataset.note = apercu ? "" : valeur;
 }
+/* Survol : on montre ce que donnerait le clic, sans rien changer. */
+el("etoiles").addEventListener("mouseover", e => {
+  const b = e.target.closest(".etoile");
+  if(b) peindreEtoiles(Number(b.dataset.note), true);
+});
+el("etoiles").addEventListener("mouseleave", () => peindreEtoiles());
 el("next").addEventListener("click", () => nextTodo());
 function nextTodo(){
   const d = DATA[active];

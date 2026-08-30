@@ -40,9 +40,11 @@ CSS = """
 .row[data-state="rebut"] .dot{background:var(--warn);border-radius:2px}
 /* --- note de confiance --- */
 .etoiles{display:flex;align-items:center;gap:2px;margin:10px 0 2px}
-.etoile{background:none;border:0;padding:2px 1px;font-size:19px;line-height:1;cursor:pointer;
-  color:var(--line-2);transition:color .12s}
-.etoile:hover,.etoile[data-on="1"]{color:var(--warn)}
+.etoile{background:none;border:0;padding:1px 1px;font-size:20px;line-height:1;cursor:pointer;
+  color:var(--ink-3);transition:color .1s}
+.etoile[data-on="1"]{color:var(--warn)}
+.etoiles:hover .etoile{color:var(--ink-2)}
+.etoiles:hover .etoile[data-on="1"]{color:var(--warn)}
 .etoile:focus-visible{outline:2px solid var(--accent);outline-offset:2px;border-radius:4px}
 .etoile-txt{margin-left:8px;color:var(--ink-3);font-size:12px}
 .etoile-txt[data-note="5"]{color:var(--good);font-weight:500}
@@ -81,7 +83,7 @@ ANCRAGES = [
 ETOILES = ('      <div class="etoiles" id="etoiles" role="radiogroup" '
            'aria-label="Confiance dans la transcription">\n'
            + "".join(f'        <button type="button" class="etoile" data-note="{n}" '
-                     f'aria-label="{n} sur 5 — {t}" title="{n} ★ — {t}">★</button>\n'
+                     f'aria-label="{n} sur 5 — {t}" title="{n} ★ — {t}">☆</button>\n'
                      for n, t in ANCRAGES)
            + '        <span class="etoile-txt" id="etoile-txt">non notée</span>\n'
              '      </div>\n')
@@ -114,8 +116,6 @@ def gabarit_commun() -> str:
         '<div class="ref kreyol" id="source"></div>\n'
         '      <button class="btn bon" id="bon" title="Cette transcription est correcte en gcf">'
         '+ Bonne telle quelle</button>')
-    # Distinguer « je passe » de « cet extrait ne vaut rien » : sans cette
-    # sortie, on écrit n'importe quoi plutôt que de laisser un blanc.
     # La note de confiance s'intercale entre la saisie et les actions : on la
     # pose après avoir écrit, avant de valider.
     src = src.replace(

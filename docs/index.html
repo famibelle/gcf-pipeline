@@ -205,9 +205,11 @@ kbd{
 .row[data-state="rebut"] .dot{background:var(--warn);border-radius:2px}
 /* --- note de confiance --- */
 .etoiles{display:flex;align-items:center;gap:2px;margin:10px 0 2px}
-.etoile{background:none;border:0;padding:2px 1px;font-size:19px;line-height:1;cursor:pointer;
-  color:var(--line-2);transition:color .12s}
-.etoile:hover,.etoile[data-on="1"]{color:var(--warn)}
+.etoile{background:none;border:0;padding:1px 1px;font-size:20px;line-height:1;cursor:pointer;
+  color:var(--ink-3);transition:color .1s}
+.etoile[data-on="1"]{color:var(--warn)}
+.etoiles:hover .etoile{color:var(--ink-2)}
+.etoiles:hover .etoile[data-on="1"]{color:var(--warn)}
 .etoile:focus-visible{outline:2px solid var(--accent);outline-offset:2px;border-radius:4px}
 .etoile-txt{margin-left:8px;color:var(--ink-3);font-size:12px}
 .etoile-txt[data-note="5"]{color:var(--good);font-weight:500}
@@ -288,11 +290,11 @@ kbd{
       <textarea id="edit" class="kreyol" spellcheck="false" placeholder="Écris ici la version créole guadeloupéenne correcte…"></textarea>
       <div class="suggest" id="suggest" aria-label="Suggestions kréyòl"></div>
       <div class="etoiles" id="etoiles" role="radiogroup" aria-label="Confiance dans la transcription">
-        <button type="button" class="etoile" data-note="1" aria-label="1 sur 5 — inexploitable — audio inaudible, rien à en tirer" title="1 ★ — inexploitable — audio inaudible, rien à en tirer">★</button>
-        <button type="button" class="etoile" data-note="2" aria-label="2 sur 5 — j'ai deviné, plusieurs passages me résistent" title="2 ★ — j'ai deviné, plusieurs passages me résistent">★</button>
-        <button type="button" class="etoile" data-note="3" aria-label="3 sur 5 — le sens est bon, l'orthographe gcf reste incertaine" title="3 ★ — le sens est bon, l'orthographe gcf reste incertaine">★</button>
-        <button type="button" class="etoile" data-note="4" aria-label="4 sur 5 — correct, un doute ponctuel — un mot, un accent" title="4 ★ — correct, un doute ponctuel — un mot, un accent">★</button>
-        <button type="button" class="etoile" data-note="5" aria-label="5 sur 5 — je réponds de ce texte : gcf validé, il fait foi" title="5 ★ — je réponds de ce texte : gcf validé, il fait foi">★</button>
+        <button type="button" class="etoile" data-note="1" aria-label="1 sur 5 — inexploitable — audio inaudible, rien à en tirer" title="1 ★ — inexploitable — audio inaudible, rien à en tirer">☆</button>
+        <button type="button" class="etoile" data-note="2" aria-label="2 sur 5 — j'ai deviné, plusieurs passages me résistent" title="2 ★ — j'ai deviné, plusieurs passages me résistent">☆</button>
+        <button type="button" class="etoile" data-note="3" aria-label="3 sur 5 — le sens est bon, l'orthographe gcf reste incertaine" title="3 ★ — le sens est bon, l'orthographe gcf reste incertaine">☆</button>
+        <button type="button" class="etoile" data-note="4" aria-label="4 sur 5 — correct, un doute ponctuel — un mot, un accent" title="4 ★ — correct, un doute ponctuel — un mot, un accent">☆</button>
+        <button type="button" class="etoile" data-note="5" aria-label="5 sur 5 — je réponds de ce texte : gcf validé, il fait foi" title="5 ★ — je réponds de ce texte : gcf validé, il fait foi">☆</button>
         <span class="etoile-txt" id="etoile-txt">non notée</span>
       </div>
       <div class="actions">
