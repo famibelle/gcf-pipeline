@@ -50,3 +50,8 @@ htmlcov/
 .vscode/
 wandb/
 runs/
+
+# Index du Space : reconstruit par scripts/build_space_index.py
+space/data/index.jsonl
+# Moteur kréyòl : copié depuis docs/assets par scripts/deploy_space.sh
+space/static/assets/
