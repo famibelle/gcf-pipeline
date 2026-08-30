@@ -1,0 +1,341 @@
+<!-- Gabarit de l'interface d'annotation : structure et CSS seulement.
+     scripts/build_pages.py en tire docs/index.html (GitHub Pages) et
+     space/static/index.html (Space Hugging Face). La logique est dans web/app.js. -->
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="description" content="Correction manuelle des 80 segments diagnostiques Whisper-ht du pipeline ht-&gt;gcf.">
+<meta name="robots" content="noindex">
+<title>Diagnostic Kreyòl GCF</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wght@400;500;600;700&family=Source+Serif+4:ital,opsz,wght@0,8..60,400;0,8..60,600;1,8..60,400&family=IBM+Plex+Mono:wght@400;500&display=swap">
+<style>
+:root{
+  --ground:#F7F9FA; --surface:#FFFFFF; --surface-2:#EEF3F5;
+  --ink:#12181D; --ink-2:#44555F; --ink-3:#76888F;
+  --line:#DCE4E8; --line-2:#C3D0D6;
+  --accent:#0E7C86; --accent-ink:#FFFFFF; --accent-soft:#DBEFF1;
+  --warn:#B26A00; --warn-soft:#FBEEDA;
+  --good:#2E7D51; --good-soft:#DFF0E6;
+  --mark:#FFE9A8; --mark-ink:#5C4200;
+  --shadow:0 1px 2px rgba(18,24,29,.06),0 8px 24px rgba(18,24,29,.06);
+  --r:10px;
+}
+@media (prefers-color-scheme:dark){
+  :root:not([data-theme="light"]){
+    --ground:#0E1417; --surface:#151D22; --surface-2:#1D272D;
+    --ink:#E6EDF0; --ink-2:#A6B7C0; --ink-3:#788C96;
+    --line:#243139; --line-2:#33444E;
+    --accent:#38B0BA; --accent-ink:#062326; --accent-soft:#123B40;
+    --warn:#E0A44A; --warn-soft:#3A2C12;
+    --good:#63BE8B; --good-soft:#14301F;
+    --mark:#5A4A14; --mark-ink:#FFE9A8;
+    --shadow:0 1px 2px rgba(0,0,0,.4),0 8px 24px rgba(0,0,0,.35);
+  }
+}
+:root[data-theme="dark"]{
+  --ground:#0E1417; --surface:#151D22; --surface-2:#1D272D;
+  --ink:#E6EDF0; --ink-2:#A6B7C0; --ink-3:#788C96;
+  --line:#243139; --line-2:#33444E;
+  --accent:#38B0BA; --accent-ink:#062326; --accent-soft:#123B40;
+  --warn:#E0A44A; --warn-soft:#3A2C12;
+  --good:#63BE8B; --good-soft:#14301F;
+  --mark:#5A4A14; --mark-ink:#FFE9A8;
+  --shadow:0 1px 2px rgba(0,0,0,.4),0 8px 24px rgba(0,0,0,.35);
+}
+*{box-sizing:border-box}
+body{
+  margin:0; background:var(--ground); color:var(--ink);
+  font-family:Archivo,"Helvetica Neue",Arial,sans-serif;
+  font-size:15px; line-height:1.5;
+  -webkit-font-smoothing:antialiased;
+}
+.kreyol{font-family:"Source Serif 4",Georgia,"Times New Roman",serif}
+.mono{font-family:"IBM Plex Mono",ui-monospace,SFMono-Regular,Menlo,monospace}
+button{font-family:inherit;font-size:inherit;color:inherit}
+:focus-visible{outline:2px solid var(--accent);outline-offset:2px;border-radius:4px}
+
+/* ---------- barre haute ---------- */
+.top{
+  position:sticky;top:0;z-index:20;display:flex;align-items:center;gap:20px;
+  padding:12px 20px;background:var(--surface);border-bottom:1px solid var(--line);
+  flex-wrap:wrap;
+}
+.brand{display:flex;flex-direction:column;gap:1px;margin-right:auto}
+.brand h1{margin:0;font-size:17px;font-weight:700;letter-spacing:-.01em}
+.brand .sub{font-size:12px;color:var(--ink-3);letter-spacing:.02em}
+.meter{display:flex;align-items:center;gap:10px}
+.meter .bar{width:170px;height:7px;border-radius:99px;background:var(--surface-2);overflow:hidden}
+.meter .bar i{display:block;height:100%;background:var(--good);transition:width .3s ease}
+.meter .num{font-size:12.5px;color:var(--ink-2);font-variant-numeric:tabular-nums}
+.btn{
+  border:1px solid var(--line-2);background:var(--surface);border-radius:8px;
+  padding:7px 13px;cursor:pointer;font-weight:500;font-size:13.5px;
+  display:inline-flex;align-items:center;gap:7px;transition:background .15s,border-color .15s;
+}
+.btn:hover{background:var(--surface-2);border-color:var(--ink-3)}
+.btn.primary{background:var(--accent);border-color:var(--accent);color:var(--accent-ink)}
+.btn.primary:hover{filter:brightness(1.08)}
+.btn:disabled{opacity:.45;cursor:not-allowed}
+
+/* ---------- structure ---------- */
+.wrap{display:grid;grid-template-columns:320px minmax(0,1fr);gap:0;min-height:calc(100vh - 58px)}
+.list{border-right:1px solid var(--line);background:var(--surface);overflow-y:auto;max-height:calc(100vh - 58px);position:sticky;top:58px}
+.filters{display:flex;gap:5px;padding:10px 12px;border-bottom:1px solid var(--line);position:sticky;top:0;background:var(--surface);z-index:2}
+.chip{border:1px solid var(--line-2);background:transparent;border-radius:99px;padding:4px 10px;font-size:12px;cursor:pointer;color:var(--ink-2)}
+.chip[aria-pressed="true"]{background:var(--ink);color:var(--ground);border-color:var(--ink)}
+.row{
+  display:grid;grid-template-columns:auto 1fr;gap:9px;align-items:start;
+  width:100%;text-align:left;border:0;background:transparent;
+  padding:10px 12px;cursor:pointer;border-bottom:1px solid var(--line);
+  border-left:3px solid transparent;
+}
+.row:hover{background:var(--surface-2)}
+.row[aria-current="true"]{background:var(--accent-soft);border-left-color:var(--accent)}
+.dot{width:9px;height:9px;border-radius:50%;margin-top:6px;background:var(--line-2);flex:none}
+.row[data-state="done"] .dot{background:var(--good)}
+.row[data-state="draft"] .dot{background:var(--warn)}
+.row[data-state="skip"] .dot{background:var(--ink-3);border-radius:2px}
+.row .id{font-size:10.5px;color:var(--ink-3);letter-spacing:.04em}
+.row .txt{font-size:13px;color:var(--ink-2);display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
+
+/* ---------- panneau de travail ---------- */
+.pane{padding:22px 26px 80px;max-width:860px}
+.crumb{display:flex;align-items:center;gap:10px;margin-bottom:16px;flex-wrap:wrap}
+.crumb .seg{font-size:12px;letter-spacing:.05em;color:var(--ink-3);text-transform:uppercase}
+.tag{font-size:11.5px;padding:3px 9px;border-radius:99px;font-weight:500;letter-spacing:.02em}
+.tag.done{background:var(--good-soft);color:var(--good)}
+.tag.draft{background:var(--warn-soft);color:var(--warn)}
+.tag.skip{background:var(--surface-2);color:var(--ink-3)}
+.tag.todo{background:var(--surface-2);color:var(--ink-3)}
+
+.player{
+  display:flex;align-items:center;gap:14px;padding:14px 16px;background:var(--surface);
+  border:1px solid var(--line);border-radius:var(--r);box-shadow:var(--shadow);margin-bottom:20px;flex-wrap:wrap;
+}
+.play{
+  width:46px;height:46px;border-radius:50%;border:0;background:var(--accent);color:var(--accent-ink);
+  cursor:pointer;display:grid;place-items:center;flex:none;
+}
+.play svg{width:19px;height:19px;fill:currentColor}
+.seek{flex:1;min-width:160px;display:flex;align-items:center;gap:10px}
+.seek input[type=range]{flex:1;accent-color:var(--accent);min-width:80px}
+.time{font-size:12px;color:var(--ink-2);font-variant-numeric:tabular-nums;letter-spacing:.02em}
+.rates{display:flex;gap:4px}
+.rate{border:1px solid var(--line-2);background:transparent;border-radius:6px;padding:3px 8px;font-size:11.5px;cursor:pointer;color:var(--ink-2)}
+.rate[aria-pressed="true"]{background:var(--ink);color:var(--ground);border-color:var(--ink)}
+
+.field{margin-bottom:18px}
+.label{
+  display:flex;align-items:center;gap:8px;margin-bottom:6px;
+  font-size:11px;letter-spacing:.08em;text-transform:uppercase;color:var(--ink-3);font-weight:600;
+}
+.label .hint{text-transform:none;letter-spacing:0;font-weight:400;font-size:12px;color:var(--ink-3)}
+.ref{
+  background:var(--surface);border:1px solid var(--line);border-left:3px solid var(--line-2);
+  border-radius:var(--r);padding:12px 14px;font-size:16.5px;line-height:1.6;
+}
+.ref mark{background:var(--mark);color:var(--mark-ink);border-radius:3px;padding:0 2px}
+textarea{
+  width:100%;min-height:110px;resize:vertical;padding:12px 14px;
+  border:1px solid var(--line-2);border-radius:var(--r);background:var(--surface);color:var(--ink);
+  font-family:"Source Serif 4",Georgia,serif;font-size:16.5px;line-height:1.6;
+}
+textarea:focus{border-color:var(--accent)}
+input[type=text].notes{
+  width:100%;padding:9px 12px;border:1px solid var(--line-2);border-radius:8px;
+  background:var(--surface);color:var(--ink);font-size:14px;font-family:inherit;
+}
+.suggest{display:flex;gap:6px;flex-wrap:wrap;align-items:center;margin-top:9px;min-height:34px}
+.sug{
+  border:1px solid var(--line-2);background:var(--surface);border-radius:99px;
+  padding:5px 12px;cursor:pointer;display:inline-flex;align-items:center;gap:7px;
+  font-family:"Source Serif 4",Georgia,serif;font-size:15.5px;line-height:1.2;
+}
+.sug:hover{border-color:var(--accent);background:var(--accent-soft)}
+.sug.ctx{border-style:dashed}
+.sug[data-lang="FRENCH"]{color:var(--ink-2);font-style:italic}
+.sug .k{
+  font-family:"IBM Plex Mono",monospace;font-size:10px;letter-spacing:.03em;
+  color:var(--ink-3);border:1px solid var(--line);border-radius:3px;padding:0 4px;font-style:normal;
+}
+.suggest .why{font-size:11.5px;color:var(--ink-3);letter-spacing:.02em}
+.actions{display:flex;gap:9px;flex-wrap:wrap;margin-top:6px}
+.keys{margin-top:22px;padding-top:14px;border-top:1px solid var(--line);font-size:12px;color:var(--ink-3);display:flex;gap:16px;flex-wrap:wrap}
+kbd{
+  font-family:"IBM Plex Mono",monospace;font-size:11px;background:var(--surface-2);
+  border:1px solid var(--line-2);border-bottom-width:2px;border-radius:4px;padding:1px 5px;color:var(--ink-2);
+}
+.save-state{font-size:12px;color:var(--ink-3);min-height:16px}
+.toast{
+  position:fixed;left:50%;bottom:24px;transform:translateX(-50%) translateY(8px);
+  background:var(--ink);color:var(--ground);padding:10px 16px;border-radius:8px;font-size:13.5px;
+  opacity:0;pointer-events:none;transition:opacity .2s,transform .2s;z-index:50;box-shadow:var(--shadow);max-width:90vw;
+}
+.toast.on{opacity:1;transform:translateX(-50%) translateY(0)}
+@media (prefers-reduced-motion:reduce){*{transition:none!important;animation:none!important}}
+@media (max-width:820px){
+  .wrap{grid-template-columns:1fr}
+  .list{position:static;max-height:230px;border-right:0;border-bottom:1px solid var(--line)}
+  .pane{padding:18px 16px 70px}
+}
+
+/* --- recherche, motifs, pagination --- */
+.qbox{display:flex;gap:6px;margin-bottom:8px}
+.qbox input{flex:1;min-width:0;padding:7px 9px;border:1px solid var(--line);border-radius:8px;
+  background:var(--surface);color:var(--ink);font:inherit;font-size:13px}
+.qbox input:focus{outline:2px solid var(--accent);outline-offset:-1px}
+.meta{padding:6px 2px 8px;color:var(--ink-3);font-size:12px;display:flex;justify-content:space-between;gap:8px}
+.motif{display:inline-block;margin-left:6px;padding:1px 6px;border-radius:999px;
+  font-size:10px;font-weight:600;letter-spacing:.02em;vertical-align:1px}
+.motif[data-m="français"]{background:var(--warn-soft);color:var(--warn)}
+.motif[data-m="hallucination"]{background:var(--mark);color:var(--mark-ink)}
+.motif[data-m="vide"]{background:var(--surface-2);color:var(--ink-3)}
+.plus{width:100%;margin:8px 0 4px;padding:8px;border:1px dashed var(--line-2);border-radius:8px;
+  background:none;color:var(--ink-2);font:inherit;font-size:12px;cursor:pointer}
+.plus:hover{background:var(--surface-2)}
+.qui{padding:5px 8px;border:1px solid var(--line);border-radius:8px;background:var(--surface);
+  color:var(--ink);font:inherit;font-size:12px;width:120px}
+.vide{padding:24px 8px;color:var(--ink-3);font-size:13px;text-align:center}
+/* ★ vaut jugement sur l'extrait, « ignoré » sur le moment : deux couleurs. */
+.tag.rebut{background:var(--warn-soft);color:var(--warn)}
+.row[data-state="rebut"] .dot{background:var(--warn);border-radius:2px}
+/* --- note de confiance --- */
+.etoiles{display:flex;align-items:center;gap:2px;margin:10px 0 2px}
+.etoile{background:none;border:0;padding:1px 1px;font-size:20px;line-height:1;cursor:pointer;
+  color:var(--ink-3);transition:color .1s}
+.etoile[data-on="1"]{color:var(--warn)}
+.etoiles:hover .etoile{color:var(--ink-2)}
+.etoiles:hover .etoile[data-on="1"]{color:var(--warn)}
+.etoile:focus-visible{outline:2px solid var(--accent);outline-offset:2px;border-radius:4px}
+.etoile-txt{margin-left:8px;color:var(--ink-3);font-size:12px}
+.etoile-txt[data-note="5"]{color:var(--good);font-weight:500}
+.etoile-txt[data-note="1"]{color:var(--warn)}
+.note-mini{color:var(--warn);font-size:10px;letter-spacing:-1px;margin-left:5px}
+.bon{margin-top:8px;color:var(--good);border-color:var(--good)}
+.bon:hover{background:var(--good-soft)}
+</style>
+</head>
+<body>
+<header class="top">
+  <div class="brand">
+    <h1>Annotation Kreyòl GCF</h1>
+    <div class="sub" id="sub">chargement…</div>
+  </div>
+  <div class="meter">
+    <div class="bar"><i id="bar" style="width:0%"></i></div>
+    <span class="num" id="count">0 / 0</span>
+  </div>
+  <input class="qui" id="annotateur" placeholder="ton nom" title="Sépare ton travail de celui des autres">
+  <button class="btn" id="theme" title="Basculer le thème">Thème</button>
+  <button class="btn primary" id="export">Exporter le CSV</button>
+</header>
+
+<div class="wrap">
+  <nav class="list" id="list" aria-label="Segments">
+    <div class="qbox">
+      <input type="search" id="q" placeholder="Chercher dans les transcriptions…" autocomplete="off">
+      <button class="btn" id="hasard" title="Sauter au hasard dans le corpus">🎲</button>
+    </div>
+    <div class="filters">
+      <button class="chip" data-filter="tous" aria-pressed="true">Tous</button>
+      <button class="chip" data-filter="français" aria-pressed="false">Français</button>
+      <button class="chip" data-filter="hallucination" aria-pressed="false">Hallucinations</button>
+      <button class="chip" data-filter="vide" aria-pressed="false">Vides</button>
+      <button class="chip" data-etat="todo" aria-pressed="false">À faire</button>
+      <button class="chip" data-etat="done" aria-pressed="false">Corrigés</button>
+      <button class="chip" data-etat="rebut" aria-pressed="false">Inutilisables</button>
+    </div>
+    <div class="meta"><span id="trouves">…</span><span id="stockage"></span></div>
+    <div id="rows"></div>
+  </nav>
+
+  <main class="pane">
+    <div class="crumb">
+      <span class="seg mono" id="segid">—</span>
+      <span class="tag todo" id="segtag">à faire</span>
+      <span class="save-state" id="saved"></span>
+    </div>
+
+    <div class="player">
+      <button class="play" id="play" aria-label="Lire ou mettre en pause">
+        <svg viewBox="0 0 24 24" id="icon"><path d="M8 5v14l11-7z"></path></svg>
+      </button>
+      <div class="seek">
+        <span class="time" id="cur">0:00</span>
+        <input type="range" id="scrub" min="0" max="1000" value="0" aria-label="Position dans l'extrait">
+        <span class="time" id="dur">0:00</span>
+      </div>
+      <div class="rates">
+        <button class="rate" data-rate="0.6">0,6×</button>
+        <button class="rate" data-rate="0.8">0,8×</button>
+        <button class="rate" data-rate="1" aria-pressed="true">1×</button>
+      </div>
+      <button class="btn" id="again">↺ Réécouter</button>
+    </div>
+
+    <div class="field">
+      <div class="label">Transcription Whisper-ht
+        <span class="hint">référence — les mots surlignés sont ceux que tu as changés</span>
+      </div>
+      <div class="ref kreyol" id="source"></div>
+      <button class="btn bon" id="bon" title="Cette transcription est correcte en gcf">+ Bonne telle quelle</button>
+    </div>
+
+    <div class="field">
+      <div class="label"><label for="edit">Correction gcf</label></div>
+      <textarea id="edit" class="kreyol" spellcheck="false" placeholder="Écris ici la version créole guadeloupéenne correcte…"></textarea>
+      <div class="suggest" id="suggest" aria-label="Suggestions kréyòl"></div>
+      <div class="etoiles" id="etoiles" role="radiogroup" aria-label="Confiance dans la transcription">
+        <button type="button" class="etoile" data-note="1" aria-label="1 sur 5 — inexploitable — audio inaudible, rien à en tirer" title="1 ★ — inexploitable — audio inaudible, rien à en tirer">☆</button>
+        <button type="button" class="etoile" data-note="2" aria-label="2 sur 5 — j'ai deviné, plusieurs passages me résistent" title="2 ★ — j'ai deviné, plusieurs passages me résistent">☆</button>
+        <button type="button" class="etoile" data-note="3" aria-label="3 sur 5 — le sens est bon, l'orthographe gcf reste incertaine" title="3 ★ — le sens est bon, l'orthographe gcf reste incertaine">☆</button>
+        <button type="button" class="etoile" data-note="4" aria-label="4 sur 5 — correct, un doute ponctuel — un mot, un accent" title="4 ★ — correct, un doute ponctuel — un mot, un accent">☆</button>
+        <button type="button" class="etoile" data-note="5" aria-label="5 sur 5 — je réponds de ce texte : gcf validé, il fait foi" title="5 ★ — je réponds de ce texte : gcf validé, il fait foi">☆</button>
+        <span class="etoile-txt" id="etoile-txt">non notée</span>
+      </div>
+      <div class="actions">
+        <button class="btn" id="copysrc">Reprendre la transcription</button>
+        <button class="btn" id="skip">Ignorer ce segment</button>
+        <button class="btn primary" id="next">Valider et suivant</button>
+      </div>
+    </div>
+
+    <div class="field">
+      <div class="label"><label for="notes">Notes</label><span class="hint">les cas ambigus font les meilleures règles</span></div>
+      <input type="text" id="notes" class="notes" placeholder="Hésitation, audio peu clair, choix contextuel…">
+    </div>
+
+    <div class="keys">
+      <span><kbd>Espace</kbd> lire / pause</span>
+      <span><kbd>Ctrl</kbd>+<kbd>Entrée</kbd> valider et suivant</span>
+      <span><kbd>Alt</kbd>+<kbd>↑</kbd> <kbd>↓</kbd> segment précédent / suivant</span>
+      <span><kbd>Ctrl</kbd>+<kbd>Espace</kbd> réécouter</span>
+      <span><kbd>Tab</kbd> accepter la suggestion</span>
+      <span><kbd>Alt</kbd>+<kbd>1</kbd>…<kbd>5</kbd> noter la transcription</span>
+      <span><kbd>Alt</kbd>+<kbd>Entrée</kbd> transcription bonne telle quelle</span>
+      <span id="mode"></span>
+    </div>
+  </main>
+</div>
+
+<div class="toast" id="toast" role="status" aria-live="polite"></div>
+
+<script src="assets/kreyol/simulateur-engine.js"></script>
+<script>window.GCF_MODE = "statique";</script>
+<script src="app.js"></script>
+</body>
+</html>
+<script>
+setTimeout(() => {
+  const ta = document.getElementById("edit");
+  ta.value = "kre"; ta.setSelectionRange(3, 3);
+  try { refreshSuggest(); } catch(e) { document.title = "THROW " + e.message; return; }
+  document.title = "DIAG global=" + (typeof KreyolSimulatorEngine)
+    + " engine=" + (typeof engine === "undefined" ? "absent" : (engine ? "chargé" : "null"))
+    + " sugs=" + document.getElementById("suggest").children.length;
+}, 5000);
+</script>

@@ -527,16 +527,16 @@ async function loadLexicon(){
   ]);
   return {dict, ngrams, french};
 }
-let engine = null;
+let engine = null, lexiqueEnPanne = false;
 const WORD_RE = /[\p{L}\p{M}'’-]+/gu;
 const TAIL_RE = /[\p{L}\p{M}'’-]*$/u;
 const HEAD_RE = /^[\p{L}\p{M}'’-]*/u;
 
 async function bootPredict(){
-  if(typeof KreyolSimulatorEngine === "undefined") return;
+  if(typeof KreyolSimulatorEngine === "undefined"){ lexiqueEnPanne = true; return; }
   let lex = null;
-  try{ lex = await loadLexicon(); }catch(e){ return; }
-  if(!lex || !lex.dict) return;
+  try{ lex = await loadLexicon(); }catch(e){ lexiqueEnPanne = true; refreshSuggest(); return; }
+  if(!lex || !lex.dict){ lexiqueEnPanne = true; refreshSuggest(); return; }
   const e = new KreyolSimulatorEngine.SuggestionEngine();
   e.loadDictionary(lex.dict);
   e.loadNgramModel(lex.ngrams || {});
@@ -552,7 +552,15 @@ function tail(){
 }
 function refreshSuggest(){
   const box = el("suggest");
-  if(!engine){ box.replaceChildren(); return; }
+  if(!engine){
+    box.replaceChildren();
+    if(el("edit").value.trim() && !lexiqueEnPanne){
+      const a = document.createElement("span");
+      a.className = "why"; a.textContent = "chargement du lexique kréyòl…";
+      box.appendChild(a);
+    }
+    return;
+  }
   const {before, partial} = tail();
   let items = [];
   if(partial.length >= 1){
@@ -709,7 +717,8 @@ async function chargerLot(){
       new Blob([JSON.stringify({annotateur, rows: [...enAttente.values()]})], {type: "application/json"})); });
   }
   majStats();
+  const lexique = bootPredict();   // en parallèle : rien ne l'oblige à attendre la liste
   await chercher(true);
-  bootPredict();
+  await lexique;
   if(enAttente.size) envoyer();
 })();
